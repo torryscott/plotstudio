@@ -1,0 +1,17 @@
+---
+name:  freqplotbuilder
+title: Frequencies
+jrs:   '1.1'
+
+items:
+    - name: widget
+      title: Frequencies
+      type: Html
+      visible: true
+
+    - name: exportStatus
+      title: Export Status
+      type: Html
+      visible: true
+
+...

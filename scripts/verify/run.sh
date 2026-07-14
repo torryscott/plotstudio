@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# Render + check the full Graph Builder verification battery.
+#
+# Usage:  scripts/verify/run.sh [--min] [--extras]
+#   --min     verify the minified bundle (default: the source bundle)
+#   --extras  after the battery, also run the accessibility audit
+#             (axe-core; skipped if not installed), the
+#             aggregation-cache behavioral test (needs jmvcore;
+#             skipped if missing), the summary-table smoke suites,
+#             the pedagogy panel probe (chooser/lint/anatomy/wizard
+#             copy + rules), and the listener-leak probe
+#
+# Env:
+#   GB2_VERIFY_OUT  output dir (default /tmp/gb2-verify, or
+#                   /tmp/gb2-verify-min with --min)
+#   GB2_NODE_BASE   a directory whose node_modules contains playwright
+#
+# One-time setup for the checker:
+#   cd /tmp && npm i playwright axe-core && npx playwright install chromium
+
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+BUNDLE=source
+EXTRAS=0
+for arg in "$@"; do
+    case "$arg" in
+        --min)    BUNDLE=min ;;
+        --extras) EXTRAS=1 ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
+OUT="${GB2_VERIFY_OUT:-}"
+if [ -z "$OUT" ]; then
+    OUT=/tmp/gb2-verify
+    [ "$BUNDLE" = "min" ] && OUT=/tmp/gb2-verify-min
+fi
+
+# Find a node_modules that has playwright. ESM `import` ignores
+# NODE_PATH, so check.mjs resolves it via createRequire from
+# GB2_NODE_BASE (plus its own fallback bases).
+if [ -z "${GB2_NODE_BASE:-}" ]; then
+    npm_base="$(npm root -g 2>/dev/null || true)"
+    [ -n "$npm_base" ] && npm_base="$(dirname "$npm_base")"
+    for base in "$HERE/../.." /tmp /private/tmp "$npm_base"; do
+        if [ -n "$base" ] && [ -e "$base/node_modules/playwright" ]; then
+            export GB2_NODE_BASE="$base"
+            break
+        fi
+    done
+fi
+if [ -z "${GB2_NODE_BASE:-}" ]; then
+    echo "playwright not found; see the one-time setup note at the top of $0" >&2
+    exit 2
+fi
+
+echo "== render ($BUNDLE bundle) -> $OUT"
+GB2_VERIFY_OUT="$OUT" GB2_BUNDLE="$BUNDLE" Rscript "$HERE/render.R"
+
+echo "== check"
+GB2_VERIFY_OUT="$OUT" node "$HERE/check.mjs"
+
+echo "== independent-width X/Y axis junction"
+GB2_VERIFY_OUT="$OUT" node "$HERE/axis-junction-check.mjs"
+
+echo "== suite-wide centered Cartesian axes + zero ticks"
+GB2_VERIFY_OUT="$OUT" node "$HERE/cartesian-axis-check.mjs"
+
+echo "== lower-panel naming + compact-width interactions"
+GB2_VERIFY_OUT="$OUT" node "$HERE/naming-check.mjs"
+
+echo "== control consistency (Order / RM nesting / shapes / line styles)"
+GB2_VERIFY_OUT="$OUT" node "$HERE/control-consistency-check.mjs"
+
+echo "== color inheritance, reset, picker-target, and swatch parity"
+GB2_VERIFY_OUT="$OUT" node "$HERE/color-consistency-check.mjs"
+
+echo "== dimensional control parity (presets / sliders / numeric fields)"
+GB2_VERIFY_OUT="$OUT" node "$HERE/dimensional-control-consistency-check.mjs"
+
+echo "== semantic control parity (ranges / units / reset language / order)"
+GB2_VERIFY_OUT="$OUT" node "$HERE/semantic-consistency-check.mjs"
+
+echo "== graph-aware Find a setting command palette"
+GB2_VERIFY_OUT="$OUT" node "$HERE/setting-search-check.mjs"
+
+echo "== Frequencies lower-panel persistence across chart types"
+GB2_VERIFY_OUT="$OUT" node "$HERE/freq-panel-persistence-check.mjs"
+
+echo "== sigma-panel parity (CI / cumulative % / all-pairs / per-level % / copy-to-Word)"
+GB2_VERIFY_OUT="$OUT" node "$HERE/sigma-parity-check.mjs"
+
+echo "== undo/redo completeness (generic tracking: edit->undo->redo per module + denylist)"
+GB2_VERIFY_OUT="$OUT" node "$HERE/undo-check.mjs"
+
+echo "== chartSpec migration (route style commits -> one blob; explode; per-key undo)"
+if GB2_CHARTSPEC_OUT="$OUT-chartspec" GB2_BUNDLE="$BUNDLE" Rscript "$HERE/chartspec-render.R"; then
+    GB2_CHARTSPEC_OUT="$OUT-chartspec" node "$HERE/chartspec-check.mjs"
+else
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "   skipped: jmvcore not available in this R library"
+    else
+        exit "$rc"
+    fi
+fi
+
+echo "== engine-boot handshake (placeholder ships+stores bundle -> data render goes cached)"
+if GB2_BOOT_OUT="$OUT-boot" Rscript "$HERE/boot-probe.R"; then
+    GB2_BOOT_OUT="$OUT-boot" node "$HERE/boot-check.mjs"
+else
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "   skipped: jmvcore or graphbuilder2.min.js not available"
+    else
+        exit "$rc"
+    fi
+fi
+
+if [ "$EXTRAS" = "1" ]; then
+    echo "== extras: accessibility audit (axe-core, WCAG A/AA)"
+    # The wizard is not a battery page (helpmechoose has no chart);
+    # render it here so the audit covers it too.
+    Rscript -e "source('$HERE/../../R/helpmechoose_wizard.R'); con <- file('$OUT/wizard_a11y.html', open='wb'); writeLines(helpmechoose_html(), con, useBytes=TRUE); close(con)"
+    if GB2_VERIFY_OUT="$OUT" node "$HERE/a11y-check.mjs"; then
+        :
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            echo "   skipped: axe-core not installed (cd /tmp && npm i axe-core)"
+        else
+            exit "$rc"
+        fi
+    fi
+    echo "== extras: aggregation-cache behavioral test"
+    if GB2_BUNDLE="$BUNDLE" Rscript "$HERE/aggcache-test.R"; then
+        :
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            echo "   skipped: jmvcore not available in this R library"
+        else
+            exit "$rc"
+        fi
+    fi
+    echo "== extras: summary-table smoke suites"
+    for t in "$HERE"/summary-smoke-*.R; do
+        if Rscript "$t"; then
+            :
+        else
+            rc=$?
+            if [ "$rc" -eq 2 ]; then
+                echo "   skipped: jmvcore not available in this R library"
+                break
+            else
+                echo "   FAIL: $(basename "$t")"
+                exit "$rc"
+            fi
+        fi
+    done
+    echo "== extras: pedagogy panel probe"
+    if GB2_PEDAGOGY_OUT="$OUT-pedagogy" Rscript "$HERE/pedagogy-render.R"; then
+        GB2_PEDAGOGY_OUT="$OUT-pedagogy" node "$HERE/pedagogy-check.mjs"
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            echo "   skipped: jmvcore not available in this R library"
+        else
+            exit "$rc"
+        fi
+    fi
+    echo "== extras: glossary accuracy contract"
+    node "$HERE/glossary-audit.mjs"
+    echo "== extras: stats-suite probe (brackets + Sigma panel, ~240 checks)"
+    if Rscript "$HERE/stats-probe.R" > /dev/null; then
+        node "$HERE/stats-probe.mjs"
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            echo "   skipped: jmvcore not available in this R library"
+        else
+            exit "$rc"
+        fi
+    fi
+    echo "== extras: chart-styles library probe"
+    GB2_VERIFY_OUT="$OUT" node "$HERE/styles-check.mjs"
+    echo "== extras: Small Wins fix probe (corr count, sort, labels)"
+    GB2_VERIFY_OUT="$OUT" node "$HERE/smallwins-check.mjs"
+    echo "== extras: missing-data note smoke"
+    if Rscript "$HERE/smallwins-missing-note.R"; then
+        :
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            echo "   skipped: jmvcore not available in this R library"
+        else
+            exit "$rc"
+        fi
+    fi
+    echo "== extras: listener-leak probe"
+    GB2_VERIFY_OUT="$OUT" GB2_BUNDLE="$BUNDLE" Rscript "$HERE/leak-probe.R"
+    GB2_VERIFY_OUT="$OUT" node "$HERE/check-extras.mjs"
+fi

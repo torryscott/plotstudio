@@ -1,0 +1,17 @@
+---
+name:  plotbuilder
+title: Compare Groups
+jrs:   '1.1'
+
+items:
+    - name: widget
+      title: Compare Groups
+      type: Html
+      visible: true
+
+    - name: exportStatus
+      title: Export Status
+      type: Html
+      visible: true
+
+...

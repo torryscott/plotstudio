@@ -1,0 +1,187 @@
+name: Build jamovi module
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos-arm64
+          - os: windows-latest
+            platform: win-x64
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.platform }})
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jamovi-compiler
+        run: npm install -g jamovi/jamovi-compiler
+
+      # Install the CURRENT jamovi via a package manager that resolves the
+      # live version, instead of a hardcoded www.jamovi.org/downloads/ URL.
+      # jamovi rotates which installers stay hosted AND bot-blocks direct
+      # curl/wget (both 302 to a ~14 KB 404.html), so any pinned URL the
+      # workflow downloads eventually fails and hdiutil/Expand-Archive chokes
+      # on the HTML. Homebrew/Chocolatey use download paths that aren't
+      # blocked and always track the current release.
+      - name: Install jamovi (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install --cask jamovi
+          test -d /Applications/jamovi.app || { echo "ERROR: jamovi.app missing after cask install"; exit 1; }
+          echo "JAMOVI_HOME=/Applications/jamovi.app" >> "$GITHUB_ENV"
+          echo "=== jamovi bundled R ==="
+          "/Applications/jamovi.app/Contents/Frameworks/R.framework/Versions/Current/Resources/bin/R" --version | head -1
+
+      - name: Install jamovi (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $ErrorActionPreference = "Stop"
+          # The real Windows installer lives on the ARCHIVE host, which keeps
+          # ALL versions (no rotation) as an NSIS .exe named win-x64, per
+          # jamovi's winget manifest:
+          #   https://archives.jamovi.org/jamovi-<ver>-win-x64.exe
+          # (www.jamovi.org/downloads keeps only ~the latest and bot-blocks
+          # direct fetches.) Use the Homebrew oracle version; fall back to a
+          # newest-first scan if that exact build isn't archived.
+          $ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+          function Get-Jamovi($v) {
+            $url = "https://archives.jamovi.org/jamovi-$v-win-x64.exe"
+            Write-Host "Trying $url"
+            try { Invoke-WebRequest -UseBasicParsing -UserAgent $ua -Uri $url -OutFile jamovi-setup.exe -ErrorAction Stop } catch { return $false }
+            return ((Get-Item jamovi-setup.exe -ErrorAction SilentlyContinue).Length -gt 5000000)
+          }
+          $ver = "2.7.31.0"
+          try { $ver = (Invoke-RestMethod -UseBasicParsing "https://formulae.brew.sh/api/cask/jamovi.json").version } catch {}
+          $ok = Get-Jamovi $ver
+          if (-not $ok) {
+            $line = ($ver -split '\.')[0,1] -join '.'
+            foreach ($p in 45..20) { if (Get-Jamovi "$line.$p.0") { $ver = "$line.$p.0"; $ok = $true; break } }
+          }
+          if (-not $ok) { Write-Error "No hosted jamovi Windows installer found on archives.jamovi.org"; exit 1 }
+          Write-Host "Using jamovi $ver ($((Get-Item jamovi-setup.exe).Length) bytes)"
+          # jamovi's Windows installer is NSIS (nullsoft): /S = silent; /D (the
+          # install dir) must be the LAST arg and unquoted.
+          Write-Host "Silent-installing (NSIS) ..."
+          Start-Process -Wait -FilePath ".\jamovi-setup.exe" -ArgumentList '/S','/D=C:\jamovi'
+          # Locate where jamovi actually landed (in case /D wasn't honored).
+          $jhome = $null
+          foreach ($r in @("C:\jamovi", "$env:ProgramFiles\jamovi", "${env:ProgramFiles(x86)}\jamovi", "$env:LOCALAPPDATA\jamovi", "$env:ProgramData\jamovi")) {
+            if ($r -and (Test-Path (Join-Path $r "Frameworks\R\bin\x64\R.exe"))) { $jhome = $r; break }
+          }
+          if (-not $jhome) {
+            Write-Host "R.exe not in common roots; listing candidates for diagnosis:"
+            foreach ($r in @("C:\jamovi", "$env:ProgramFiles\jamovi", "$env:LOCALAPPDATA\jamovi")) {
+              if ($r -and (Test-Path $r)) { Write-Host "--- $r ---"; Get-ChildItem -Recurse -Depth 3 $r -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Select-Object -First 40 }
+            }
+            Write-Error "jamovi R.exe not found after install"; exit 1
+          }
+          Write-Host "jamovi home: $jhome"
+          & (Join-Path $jhome "Frameworks\R\bin\x64\R.exe") --version 2>&1 | Select-Object -First 1
+          "JAMOVI_HOME=$($jhome -replace '\\','/')" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      # Minify the widget bundle so the packaged .jmo ships the ~1.4 MB
+      # minified file the widget is DESIGNED around — not the ~4.7 MB source.
+      # R/widget.R inlines the bundle into the results HTML once per session;
+      # with no .min.js present it falls back to the full source, and a 4.7 MB
+      # inline script can freeze jamovi's webview (notably on Windows). Locally
+      # scripts/jmv-build-install.sh / release.sh already minify; CI did not,
+      # so GitHub .jmo's shipped the un-minified bundle. node/npx are set up
+      # above and minify-widget.sh (npx terser) runs on both runners.
+      - name: Minify widget bundle
+        shell: bash
+        run: |
+          bash scripts/minify-widget.sh
+          echo "--- bundle files that will be packaged ---"
+          ls -la inst/widget/graphbuilder2.min.js inst/widget/graphbuilder2.min.js.hash
+
+      # Ship the user guide inside the module (Basics tab's "Open the user
+      # guide" button; R/widget.R resolves inst/docs/user-guide.html via
+      # system.file). docs/ is the canonical copy; inst/docs/ is generated
+      # (gitignored) so they can never drift. Guarded: a checkout without
+      # docs/ builds fine, the button simply does not render.
+      - name: Bundle user guide into module
+        shell: bash
+        run: |
+          if [ -f docs/user-guide.html ]; then
+            mkdir -p inst/docs/img/shots
+            cp -f docs/user-guide.html inst/docs/user-guide.html
+            cp -f docs/img/shots/*.png inst/docs/img/shots/ 2>/dev/null || true
+            echo "user guide bundled: $(ls -la inst/docs/user-guide.html)"
+          else
+            echo "no docs/user-guide.html in checkout; skipping"
+          fi
+
+      # Build the .jmo with the compiler's --build mode (NOT --install, whose
+      # post-build server handoff fails/hangs on 2.7.x: arm64 core vs x86_64
+      # python). --build compiles R, installs deps against jamovi's bundled R,
+      # and zips the .jmo — exactly what we do locally in scripts/jmv-build-install.sh.
+      - name: Build module (.jmo)
+        shell: bash
+        run: |
+          echo "JAMOVI_HOME=$JAMOVI_HOME"
+          echo "node: $(node --version) | jmc: $(which jmc)"
+          jmc --build . --home "$JAMOVI_HOME" 2>&1
+          echo "--- .jmo produced ---"
+          find . -maxdepth 1 -name '*.jmo' -type f
+
+      - name: Verify and rename artifact
+        shell: bash
+        run: |
+          JMO=$(find . -maxdepth 1 -name '*.jmo' -type f | head -1)
+          if [ -z "$JMO" ]; then echo "ERROR: no .jmo produced"; exit 1; fi
+          echo "Inspecting: $JMO"
+          unzip -p "$JMO" "plotstudio/jamovi.yaml" | grep -i rVersion || true
+          # The packaged .jmo MUST contain the minified bundle: shipping only
+          # the ~5.8 MB source freezes the jamovi webview (the v2.4.1 Windows
+          # regression). The Minify step above guarantees it on disk; this
+          # asserts jmc actually packaged it, so a future compiler / ignore-file
+          # change can never publish a broken artifact silently.
+          if ! unzip -l "$JMO" | grep -q 'graphbuilder2\.min\.js'; then
+            echo "ERROR: graphbuilder2.min.js missing from the packaged .jmo"; exit 1
+          fi
+          echo "OK: minified bundle present in the .jmo"
+          mv "$JMO" "plotstudio-${{ matrix.platform }}.jmo"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmo-${{ matrix.platform }}
+          path: 'plotstudio-${{ matrix.platform }}.jmo'
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.jmo'
+          generate_release_notes: true
