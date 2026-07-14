@@ -103,8 +103,7 @@ Then click anything on the chart you want to change.
 
 Rendering happens in a custom HTML/SVG widget (`inst/widget/graphbuilder2.js`),
 not in R graphics. The R side (`R/*.b.R`) aggregates the data and ships one
-JSON payload per render. See [CLAUDE.md](CLAUDE.md) for the full architecture
-notes and conventions.
+JSON payload per render.
 
 ```r
 # from the project root, with jmvtools installed
