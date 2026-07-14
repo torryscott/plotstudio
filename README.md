@@ -112,7 +112,6 @@ jmvtools::prepare()   # regenerate headers + validate the yaml (fast)
 ```bash
 # build + side-load into a local jamovi
 # (NOT jmvtools::install()/build(); they hang or are not exported under
-#  jamovi 2.7; see CLAUDE.md for the arm64/x86_64 details)
 bash scripts/jmv-build-install.sh
 ```
 
