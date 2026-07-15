@@ -2168,6 +2168,9 @@ graphbuilder2_html <- function(bars,
         # the 6 s CSS reveal fire. See .gb2_diag_pending_html.
         .gb2_diag_pending_html(mod_ver),
         '</div>\n',
+        # Built-without-minify note ("" in a healthy build). AFTER the
+        # host div so render()'s host wipe never removes it.
+        .gb2_min_missing_note_html(),
         # Layer A.5: standalone ES5 primer - runs even when the main
         # script below dies on a parse error (separate script tags
         # parse independently) and upgrades the Layer A box.
@@ -2447,6 +2450,30 @@ graphbuilder2_html <- function(bars,
     )
 }
 
+# Visible when (and ONLY when) the module was built without its
+# minified bundle - .gb2_widget_js() sets min_missing when
+# graphbuilder2.min.js is absent entirely (a plain `jmc --build` on a
+# fresh clone; the official .jmo builds always include it). Emitted
+# AFTER the host div so render()'s host wipe never removes it. The
+# hash-stale dev state deliberately does NOT trigger this.
+.gb2_min_missing_note_html <- function() {
+    if (is.null(.gb2_widget_js_cache$min_missing)) return("")
+    paste0(
+        '<div data-role="gb2-diag-minmissing" style="margin:6px 10px;',
+        'padding:8px 12px;max-width:640px;font-size:11.5px;line-height:1.5;',
+        'color:#7a5c1e;background:#fdf6e3;border:1px solid #e6d5a8;',
+        'border-radius:6px;">',
+        '<b>Plot Studio build note:</b> this copy of the module was built ',
+        'without its minified chart bundle, so every chart ships a ~6 MB ',
+        'script - rendering may be slow or fail outright. If you built the ',
+        'module from source, run <code>bash scripts/minify-widget.sh</code> ',
+        'before <code>jmc --build</code> (or use ',
+        '<code>scripts/jmv-build-install.sh</code>, which does both). ',
+        'The .jmo files on the GitHub releases page include the bundle.',
+        '</div>'
+    )
+}
+
 .gb2_diag_primer_script <- function(widget_id_json) {
     paste0(
         '<script>(function(){try{\n',
@@ -2651,6 +2678,10 @@ gb2_engine_boot_html <- function(message_html, client_bundle_hash = "") {
         js_code <- .gb2_widget_js()
         paste0(
             message_html, '\n',
+            # Built-without-minify note ("" in a healthy build) - shown
+            # on the empty-variable page too so a from-source builder
+            # sees it before ever adding a variable.
+            .gb2_min_missing_note_html(),
             '<script>(function(){\n',
             .gb2_self_capture_chunk(),
             'var __gb2_body_ran = false;\n',
@@ -2711,6 +2742,21 @@ gb2_engine_boot_html <- function(message_html, client_bundle_hash = "") {
         }
     } else if (nzchar(src_path)) {
         js_path <- src_path
+        # The minified bundle is absent ENTIRELY - not hash-stale (the
+        # normal mid-edit dev state above), but never built. This is the
+        # built-from-source-without-scripts/minify-widget.sh trap (the
+        # v2.4.1 regression, re-diagnosed from a jamovi-team field
+        # report Jul 2026): plain `jmc --build` on a fresh clone ships
+        # only the ~6 MB source, which the results webview may choke
+        # on. Flag it so both HTML emissions surface a visible note.
+        .gb2_widget_js_cache$min_missing <- TRUE
+        if (is.null(.gb2_widget_js_cache$warned_missing)) {
+            .gb2_widget_js_cache$warned_missing <- TRUE
+            message("[plotstudio] graphbuilder2.min.js is missing from this ",
+                    "build; serving the un-minified source (~6 MB per render). ",
+                    "Run `bash scripts/minify-widget.sh` before building, or ",
+                    "use scripts/jmv-build-install.sh.")
+        }
     }
     if (!nzchar(js_path)) {
         stop("graphbuilder2 widget JS not found in installed package")

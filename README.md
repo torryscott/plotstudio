@@ -105,6 +105,27 @@ Rendering happens in a custom HTML/SVG widget (`inst/widget/graphbuilder2.js`),
 not in R graphics. The R side (`R/*.b.R`) aggregates the data and ships one
 JSON payload per render.
 
+### Building from source
+
+> **Important:** if you build this module yourself, make sure the minified
+> widget bundle exists first. `inst/widget/graphbuilder2.min.js` is committed
+> to the repo, but if you have edited `inst/widget/graphbuilder2.js` (or the
+> min file is missing/stale for any reason), run:
+>
+> ```bash
+> bash scripts/minify-widget.sh   # requires Node (npx)
+> ```
+>
+> before `jmc --build .`. **Why it matters:** without a current
+> `graphbuilder2.min.js`, the module still builds and installs cleanly, but
+> at runtime it falls back to inlining the full ~6 MB un-minified source into
+> the results HTML on every render — which can freeze jamovi's results view
+> so the chart never draws, while everything else looks fine. (A module built
+> that way shows a "built without its minified chart bundle" note under the
+> chart area.) `scripts/jmv-build-install.sh` and the CI release workflow run
+> the minify step automatically; the `.jmo` files on the
+> [releases page](../../releases) always include the bundle.
+
 ```r
 # from the project root, with jmvtools installed
 jmvtools::prepare()   # regenerate headers + validate the yaml (fast)
@@ -112,6 +133,7 @@ jmvtools::prepare()   # regenerate headers + validate the yaml (fast)
 ```bash
 # build + side-load into a local jamovi
 # (NOT jmvtools::install()/build(); they hang or are not exported under
+# jamovi 2.7.32 — this helper drives the jamovi-compiler's --build mode)
 bash scripts/jmv-build-install.sh
 ```
 

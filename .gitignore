@@ -83,8 +83,12 @@ build_verbose.log
 jmo_extracted/
 backup_*/
 
-# Minified widget JS (built by scripts/minify-widget.sh)
-inst/widget/graphbuilder2.min.js
+# Minified widget JS: COMMITTED since v2.9.5 (was gitignored). A plain
+# `jmc --build` on a fresh clone must produce a working module - without
+# min.js the runtime falls back to inlining the ~6 MB source, which can
+# freeze the results webview (the v2.4.1 regression; re-hit by a
+# jamovi-team from-source build, Jul 2026). The Stop hook + release.sh
+# + CI keep it fresh; R/widget.R's hash check refuses a stale copy.
 
 # Shipped user guide (generated from docs/ by scripts/jmv-build-install.sh
 # and the CI workflow; docs/ is the canonical copy)

@@ -214,6 +214,30 @@ const diagState = () => ({
     await ctx.close();
 }
 
+// ---- 6. built-without-minify note: visible AND survives the render
+{
+    const { ctx, page } = await freshPage();
+    await page.goto('file://' + path.join(OUT, 'diag-minmissing.html'));
+    await page.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0,
+        null, { timeout: 30000 });
+    const st = await page.evaluate(() => {
+        const n = document.querySelector('[data-role=gb2-diag-minmissing]');
+        return {
+            note: n ? (n.textContent || '') : null,
+            visible: n ? n.getBoundingClientRect().height > 10 : false,
+            chart: document.querySelectorAll('svg [data-bar-cat]').length,
+        };
+    });
+    expect('min-missing: chart still draws (note is a warning, not a block)',
+           st.chart > 0);
+    expect('min-missing: note present after render (outside the host wipe)',
+           st.note !== null && st.visible);
+    expect('min-missing: note names the fix',
+           st.note !== null && st.note.indexOf('minify-widget.sh') >= 0);
+    await ctx.close();
+}
+
 await browser.close();
 console.log(fails === 0 ? 'diag-check: ALL OK' : `diag-check: ${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

@@ -97,6 +97,31 @@ expect("cached: pending box present too",
 expect("cached: self-heal note kept (not an error box)",
        grepl("Loading chart engine", cached, fixed = TRUE))
 
+expect("healthy build: NO min-missing note in either page",
+       !grepl("gb2-diag-minmissing", inline, fixed = TRUE) &&
+       !grepl("gb2-diag-minmissing", cached, fixed = TRUE))
+
+# Built-without-minify note (v2.9.5): the REAL loader sets min_missing
+# when graphbuilder2.min.js is absent entirely (detection is covered by
+# shimming system.file - see the session test in the v2.9.5 commit);
+# this probe overrides the loader, so set the flag directly and assert
+# the EMISSION end to end. LAST case on purpose: the flag is sticky for
+# the R session and would leak the note into every later render.
+.gb2_widget_js_cache$min_missing <- TRUE
+missing_html <- getC(plotbuilder(data = dat, xvar = "grp", yvar = "y",
+                                 groupVar = NULL, facetVar = NULL))
+wr(missing_html, "diag-minmissing.html")
+expect("min-missing: note emitted on the data page",
+       grepl("gb2-diag-minmissing", missing_html, fixed = TRUE))
+expect("min-missing: note names the fix (minify-widget.sh)",
+       grepl("minify-widget.sh", missing_html, fixed = TRUE))
+expect("min-missing: note sits OUTSIDE the host div (survives render)", {
+    host_close <- regexpr('></div>\n', missing_html, fixed = TRUE)
+    note_at <- regexpr("gb2-diag-minmissing", missing_html, fixed = TRUE)
+    # the note must come after the host div's own markup block
+    note_at > 0 && grepl('graphbuilder2-host', missing_html, fixed = TRUE)
+})
+
 writeLines(JS_HASH, file.path(OUT, "hash.txt"))
 cat(sprintf("inline=%d bytes  cached=%d bytes  -> %s\n",
             nchar(inline), nchar(cached), OUT))
