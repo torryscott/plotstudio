@@ -1432,14 +1432,15 @@ xyplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Cla
             # the reopen-rewrites-a-file surprise and the arbitrary-path
             # write a hostile file could reach via a persisted exportPath. A
             # real click is processed within seconds, so the window is ample.
+            # An id whose prefix does not parse as a timestamp (or is
+            # missing) is treated as stale too - never trusted through.
             req_ts <- suppressWarnings(as.numeric(
                 sub("-.*$", "", as.character(parsed$id))))
-            if (length(req_ts) == 1L && is.finite(req_ts)) {
-                now_ms <- as.numeric(Sys.time()) * 1000
-                if (req_ts < now_ms - 300000 || req_ts > now_ms + 60000) {
-                    self$results$exportStatus$setContent("")
-                    return()
-                }
+            now_ms <- as.numeric(Sys.time()) * 1000
+            if (length(req_ts) != 1L || !is.finite(req_ts) ||
+                req_ts < now_ms - 300000 || req_ts > now_ms + 60000) {
+                self$results$exportStatus$setContent("")
+                return()
             }
             # Skip if we've already processed this request id. The id is
             # cached in tempdir so it survives jamovi recreating the

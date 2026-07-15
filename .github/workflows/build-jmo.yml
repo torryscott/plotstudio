@@ -154,8 +154,11 @@ jobs:
           # the ~5.8 MB source freezes the jamovi webview (the v2.4.1 Windows
           # regression). The Minify step above guarantees it on disk; this
           # asserts jmc actually packaged it, so a future compiler / ignore-file
-          # change can never publish a broken artifact silently.
-          if ! unzip -l "$JMO" | grep -q 'graphbuilder2\.min\.js'; then
+          # change can never publish a broken artifact silently. Anchored to
+          # end-of-line (filenames are unzip -l's last column): the committed
+          # graphbuilder2.min.js.hash is always packaged and would satisfy an
+          # unanchored match even with the .min.js itself missing.
+          if ! unzip -l "$JMO" | grep -qE 'graphbuilder2\.min\.js$'; then
             echo "ERROR: graphbuilder2.min.js missing from the packaged .jmo"; exit 1
           fi
           echo "OK: minified bundle present in the .jmo"
