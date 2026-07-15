@@ -84,8 +84,12 @@ async function rerenderWith(page, changes) {
     await page.evaluate(patch => {
         let payload = window.__gb2_payload;
         if (!payload) {
-            const script = document.querySelector('script')?.textContent || '';
+            // Scan ALL script tags: the widget's diag primer (Jul 2026)
+            // sits in front of the payload-carrying loader script.
             const marker = 'var __gb2_payload = ';
+            const script = [...document.querySelectorAll('script')]
+                .map(el => el.textContent || '')
+                .find(text => text.includes(marker)) || '';
             const start = script.indexOf(marker) + marker.length;
             const end = script.indexOf(';\nvar __gb2_id =', start);
             if (start < marker.length || end < 0)
@@ -402,8 +406,12 @@ await withPage('xy_heatmap', async page => {
     // so replay its embedded payload through the public renderer. This is the
     // same authoritative rebuild that used to hide the picker ~1.5 s later.
     await page.evaluate(() => {
-        const script = document.querySelector('script')?.textContent || '';
+        // Scan ALL script tags: the widget's diag primer (Jul 2026)
+        // sits in front of the payload-carrying loader script.
         const marker = 'var __gb2_payload = ';
+        const script = [...document.querySelectorAll('script')]
+            .map(el => el.textContent || '')
+            .find(text => text.includes(marker)) || '';
         const start = script.indexOf(marker) + marker.length;
         const end = script.indexOf(';\nvar __gb2_id =', start);
         if (start < marker.length || end < 0) throw new Error('Embedded GraphBuilder payload not found');

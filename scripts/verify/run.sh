@@ -117,6 +117,18 @@ else
     fi
 fi
 
+echo "== failure diagnostics (silent-blank self-reporting: no-script / parse-error / render-throw)"
+if GB2_DIAG_OUT="$OUT-diag" Rscript "$HERE/diag-probe.R"; then
+    GB2_DIAG_OUT="$OUT-diag" node "$HERE/diag-check.mjs"
+else
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "   skipped: jmvcore not available"
+    else
+        exit "$rc"
+    fi
+fi
+
 if [ "$EXTRAS" = "1" ]; then
     echo "== extras: accessibility audit (axe-core, WCAG A/AA)"
     # The wizard is not a battery page (helpmechoose has no chart);

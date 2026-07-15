@@ -2084,7 +2084,7 @@ graphbuilder2_html <- function(bars,
             '  if (!window.GraphBuilder2 || !window.GraphBuilder2.render) {\n',
             '    try {\n',
             '      var __gb2_hostHeal = document.getElementById(__gb2_id);\n',
-            "      if (__gb2_hostHeal) __gb2_hostHeal.innerHTML = '<div style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">Loading chart engine…</div>';\n",
+            "      if (__gb2_hostHeal) __gb2_hostHeal.innerHTML = '<div style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">Loading chart engine…<span style=\"display:block;margin-top:6px;font-size:11.5px;color:#999;\">This resolves by itself in a few seconds. If it does not, please screenshot this and report it with your jamovi version.</span></div>';\n",
             '    } catch (_eH) {}\n',
             '  }\n',
             '  if (!__gb2_engineOk) {\n',
@@ -2158,9 +2158,20 @@ graphbuilder2_html <- function(bars,
     # IIFE body execution per subsequent render. First render
     # behaves the same as before.
     ui_font <- "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+    mod_ver <- .gb2_module_version()
     html_out <- paste0(
         '<div id="', widget_id, '" class="graphbuilder2-host" ',
-        'style="width:', width, ';--gb2-ui-font:', ui_font, ';font-family:var(--gb2-ui-font);position:relative;"></div>\n',
+        'data-gb2-version="', mod_ver, '" ',
+        'style="width:', width, ';--gb2-ui-font:', ui_font, ';font-family:var(--gb2-ui-font);position:relative;">',
+        # Layer A: static failure fallback. render() wipes it on success
+        # (host.innerHTML = ""); only a render that never happened lets
+        # the 6 s CSS reveal fire. See .gb2_diag_pending_html.
+        .gb2_diag_pending_html(mod_ver),
+        '</div>\n',
+        # Layer A.5: standalone ES5 primer - runs even when the main
+        # script below dies on a parse error (separate script tags
+        # parse independently) and upgrades the Layer A box.
+        .gb2_diag_primer_script(widget_id_json),
         '<script>(function(){\n',
         .gb2_self_capture_chunk(),
         'var __gb2_payload = ', payload_json, ';\n',
@@ -2181,11 +2192,46 @@ graphbuilder2_html <- function(bars,
         # type-switch folds) leave the flag unset, so they can never
         # prematurely release a pin that still guards in-flight echoes.
         'try { window.__gb2_authoritativeRender = true; } catch (e) {}\n',
-        'if (typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render) {\n',
-        '  window.GraphBuilder2.render(__gb2_id, __gb2_payload);\n',
-        '} else if (typeof GraphBuilder2 !== "undefined") {\n',
-        '  GraphBuilder2.render(__gb2_id, __gb2_payload);\n',
+        # Layer B failure diagnostic: a thrown render() exception (or an
+        # inline bundle that executed without defining the engine) paints
+        # an immediate red box instead of a silent blank. Cached-mode
+        # engine-absent is NOT an error here - the "Loading chart engine"
+        # note + clientBundleHash self-heal above own that path. The
+        # exception is re-thrown ASYNCHRONOUSLY so devtools / pageerror
+        # probes still see the original error.
+        'var __gb2_renderErr = null, __gb2_renderExc = null;\n',
+        'try {\n',
+        '  if (typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render) {\n',
+        '    window.GraphBuilder2.render(__gb2_id, __gb2_payload);\n',
+        '  } else if (typeof GraphBuilder2 !== "undefined") {\n',
+        '    GraphBuilder2.render(__gb2_id, __gb2_payload);\n',
+        '  } else if (__gb2_r_timing.bundle_mode === "inline") {\n',
+        '    __gb2_renderErr = "the chart engine did not define itself after the bundle script ran (bundle body executed: " + __gb2_body_ran + ")";\n',
+        '  }\n',
+        '} catch (_eRun) {\n',
+        '  __gb2_renderExc = _eRun;\n',
+        '  try {\n',
+        '    __gb2_renderErr = (_eRun && _eRun.name ? _eRun.name + ": " : "") + (_eRun && _eRun.message ? _eRun.message : String(_eRun));\n',
+        '    if (_eRun && _eRun.stack) __gb2_renderErr += "\\n" + String(_eRun.stack).split("\\n").slice(0, 3).join("\\n");\n',
+        '  } catch (_eM) { __gb2_renderErr = "unknown render exception"; }\n',
         '}\n',
+        'if (__gb2_renderErr) { try {\n',
+        '  var __gb2_eh = document.getElementById(__gb2_id);\n',
+        '  if (__gb2_eh) {\n',
+        # Static skeleton via innerHTML; every dynamic string lands via
+        # textContent (exception text can quote data-derived names).
+        '    __gb2_eh.innerHTML = "<div data-role=\\"gb2-diag-error\\" style=\\"margin:10px;padding:12px 14px;max-width:660px;font-size:12.5px;line-height:1.55;color:#7a1f1f;background:#fdeeee;border:1px solid #e3b9b9;border-radius:6px;\\"><b>Plot Studio: the chart engine hit an error.</b><br>Please screenshot this box and report it along with your jamovi version (hamburger menu, then About).<span data-role=\\"gb2-diag-err-msg\\" style=\\"display:block;margin-top:6px;white-space:pre-wrap;font-family:monospace;font-size:11.5px;\\"></span><span data-role=\\"gb2-diag-err-meta\\" style=\\"display:block;margin-top:6px;color:#9c5a5a;\\"></span></div>";\n',
+        '    var __gb2_em = __gb2_eh.querySelector("[data-role=gb2-diag-err-msg]");\n',
+        '    if (__gb2_em) __gb2_em.textContent = __gb2_renderErr;\n',
+        '    var __gb2_meta = "module v', mod_ver, ' | bundle: " + __gb2_r_timing.bundle_mode + (__gb2_r_timing.bundle_reason ? " (" + __gb2_r_timing.bundle_reason + ")" : "") + " | engine: " + ((typeof window !== "undefined" && window.GraphBuilder2) ? "loaded" : "absent");\n',
+        '    try { if (window.__gb2_bundleStoreDiag) __gb2_meta += " | store: " + window.__gb2_bundleStoreDiag; } catch (_eSd) {}\n',
+        '    try { if (window.localStorage && window.localStorage.getItem("graphbuilder2.bundle.evalBlocked")) __gb2_meta += " | evalBlocked"; } catch (_eEb) {}\n',
+        '    try { __gb2_meta += " | " + navigator.userAgent; } catch (_eUa) {}\n',
+        '    var __gb2_emeta = __gb2_eh.querySelector("[data-role=gb2-diag-err-meta]");\n',
+        '    if (__gb2_emeta) __gb2_emeta.textContent = __gb2_meta;\n',
+        '  }\n',
+        '} catch (_eDg) {} }\n',
+        'if (__gb2_renderExc) { try { setTimeout(function () { throw __gb2_renderExc; }, 0); } catch (_eRt) {} }\n',
         'var __gb2_t2 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();\n',
         # Build the on-screen debug overlay. Lives inside the
         # host div (position:absolute / top:0 / right:0) so it
@@ -2340,6 +2386,96 @@ graphbuilder2_html <- function(bars,
 # placeholder (gb2_engine_boot_html) so the two emissions can never
 # drift. Callers must declare `var __gb2_body_ran = false;` before
 # splicing the engine chunk in.
+
+# Module version for the failure-diagnostic boxes (memoized; "dev"
+# when the package is not installed, e.g. the sourced-tree harness).
+.gb2_module_version <- function() {
+    v <- .gb2_widget_js_cache$mod_ver
+    if (!is.null(v)) return(v)
+    v <- tryCatch(as.character(utils::packageVersion("plotstudio")),
+                  error = function(e) "dev")
+    .gb2_widget_js_cache$mod_ver <- v
+    v
+}
+
+# ---- Failure diagnostics (Jul 2026, Torry's ask: "diagnostics that
+# only show up in circumstances like these") ----------------------------
+# Three layers, each visible ONLY in a distinct failure mode; a healthy
+# render never shows any of them (render()'s host.innerHTML = "" wipes
+# the static layer within ~1 s, far inside the 6 s reveal delay).
+#
+#   Layer A (.gb2_diag_pending_html): a STATIC amber box inside the
+#     host div, opacity:0 with a pure-CSS animation-delay reveal at 6 s.
+#     Needs ZERO JavaScript - it is the only possible diagnostic when
+#     the results view never executes scripts at all (the silent-blank
+#     failure this was built for). Its default detail line therefore
+#     says exactly that; any script that DOES run replaces it.
+#
+#   Layer A.5 (.gb2_diag_primer_script): a tiny standalone ES5 <script>
+#     emitted BEFORE the main loader script. Separate tags parse
+#     independently, so it still runs when the main script dies on a
+#     PARSE error (e.g. an older webview rejecting newer syntax) - and
+#     its window "error" listener captures that parse error's message.
+#     At 6 s it upgrades the Layer A box: scripts run, engine state,
+#     last captured script error, user agent.
+#
+#   Layer B (inline in graphbuilder2_html's loader): try/catch around
+#     the render() invocation + a final else for "bundle ran but never
+#     defined the engine". Writes an immediate red box (module version,
+#     error + stack head, bundle mode/reason, store diag, evalBlocked,
+#     UA) and re-throws ASYNCHRONOUSLY so devtools/pageerror probes
+#     still see the original exception. Dynamic strings go through
+#     textContent - exception messages can quote data-derived names.
+.gb2_diag_pending_html <- function(mod_ver) {
+    paste0(
+        '<style>@keyframes gb2DiagShow{to{opacity:1}}</style>',
+        '<div data-role="gb2-diag-pending" style="opacity:0;',
+        'animation:gb2DiagShow .4s ease 6s forwards;',
+        'margin:10px;padding:12px 14px;max-width:620px;',
+        'font-size:12.5px;line-height:1.55;color:#7a5c1e;',
+        'background:#fdf6e3;border:1px solid #e6d5a8;border-radius:6px;">',
+        '<b>Plot Studio: the chart did not draw.</b><br>',
+        'The results arrived, but the chart engine did not paint anything ',
+        'within a few seconds. Please screenshot this box and report it ',
+        'along with your jamovi version (hamburger menu, then About). ',
+        'Module version ', mod_ver, '.',
+        '<span data-role="gb2-diag-detail" style="display:block;margin-top:6px;">',
+        'Technical detail: scripts did not execute in this results view ',
+        '(this text is the static fallback; a running script would have ',
+        'replaced it).',
+        '</span></div>'
+    )
+}
+
+.gb2_diag_primer_script <- function(widget_id_json) {
+    paste0(
+        '<script>(function(){try{\n',
+        'if(!window.__gb2_errTrapOn){window.__gb2_errTrapOn=true;\n',
+        'window.addEventListener("error",function(e){try{\n',
+        'var m=e&&e.message?String(e.message):"unknown script error";\n',
+        'if(e&&typeof e.lineno==="number"&&e.lineno>0)m+=" (line "+e.lineno+")";\n',
+        'window.__gb2_lastScriptErr=m;}catch(_e1){}},true);\n',
+        '}\n',
+        'var id=', widget_id_json, ';\n',
+        'setTimeout(function(){try{\n',
+        'var h=document.getElementById(id);if(!h)return;\n',
+        'var d=h.querySelector("[data-role=gb2-diag-pending]");if(!d)return;\n',
+        'var s=d.querySelector("[data-role=gb2-diag-detail]");\n',
+        'var msg;\n',
+        'if(!window.GraphBuilder2||!window.GraphBuilder2.render){\n',
+        'msg="Technical detail: scripts DO execute in this view, but the chart engine failed to load";\n',
+        '}else{\n',
+        'msg="Technical detail: the chart engine loaded, but the chart still did not draw";\n',
+        '}\n',
+        'if(window.__gb2_lastScriptErr)msg+=" - last script error: "+window.__gb2_lastScriptErr;\n',
+        'msg+=".";\n',
+        'try{msg+=" [ua: "+navigator.userAgent+"]";}catch(_eU){}\n',
+        'if(s)s.textContent=msg;\n',
+        'd.style.opacity="1";d.style.animation="none";\n',
+        '}catch(_e2){}},6000);\n',
+        '}catch(_e0){}})();</script>\n'
+    )
+}
 
 # The gated, marker-wrapped bundle body. The gate skips re-executing
 # the IIFE when this exact bundle version already ran in this window;
