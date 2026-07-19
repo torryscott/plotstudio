@@ -95,8 +95,9 @@ expect("snap: fallback block embedded",
        grepl("gb2-static-fallback", snap, fixed = TRUE))
 expect("snap: embedded as data-URI img (safe context)",
        grepl("data:image/svg+xml;base64,", snap, fixed = TRUE))
-expect("snap: hidden by default",
-       grepl('data-role="gb2-static-fallback" style="display:none', snap, fixed = TRUE))
+expect("snap: VISIBLE by default (script-less contexts - jamovi's export
+        pipeline runs no scripts - must get the picture for free)",
+       grepl('data-role="gb2-static-fallback" style="display:block', snap, fixed = TRUE))
 expect("snap: caption separately hidden + Save link present unwired",
        grepl('data-role="gb2-static-fallback-caption" style="display:none', snap, fixed = TRUE) &&
        grepl('data-role="gb2-snap-save" download="chart.svg" href="#"', snap, fixed = TRUE))

@@ -2117,27 +2117,28 @@ graphbuilder2_html <- function(bars,
             '    }\n',
             '  }\n',
             '  if (!window.GraphBuilder2 || !window.GraphBuilder2.render) {\n',
+            # With a snapshot present the picture IS the feedback: show it
+            # alone and hide the host outright - the "Loading chart
+            # engine" note on top of a visible chart read as noise/alarm
+            # (Torry's 2nd field test), and on a live-but-warming machine
+            # the engine's re-ship replaces this whole DOM anyway. The
+            # note survives ONLY for snapshot-less pages (old files),
+            # where it is the sole feedback until the honest message.
             '    try {\n',
+            '      var __gb2_snap0 = document.getElementById(__gb2_id + "-snap");\n',
             '      var __gb2_hostHeal = document.getElementById(__gb2_id);\n',
-            "      if (__gb2_hostHeal) __gb2_hostHeal.innerHTML = '<div style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">Loading chart engine…<span style=\"display:block;margin-top:6px;font-size:11.5px;color:#999;\">This resolves by itself in a few seconds. If it does not, please screenshot this and report it with your jamovi version.</span></div>';\n",
+            '      if (__gb2_snap0) {\n',
+            '        __gb2_snap0.style.display = "block";\n',
+            '        if (__gb2_hostHeal) __gb2_hostHeal.style.display = "none";\n',
+            '      } else if (__gb2_hostHeal) {\n',
+            "        __gb2_hostHeal.innerHTML = '<div style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">Loading chart engine…<span style=\"display:block;margin-top:6px;font-size:11.5px;color:#999;\">This resolves by itself in a few seconds. If it does not, please screenshot this and report it with your jamovi version.</span></div>';\n",
+            '      }\n',
             '    } catch (_eH) {}\n',
-            # Module-missing handling (Jul 2026, the shared-.omv case;
-            # timing reworked after Torry's 20-second field report):
-            # the static snapshot IMG reveals IMMEDIATELY when no engine
-            # answers at loader time - an instant picture, and the state
-            # jamovi's export re-render captures. Only the CAPTION (which
-            # claims the module is not installed) and the no-snapshot
-            # message wait for confirmation: ~3 s when window.setOption
-            # never appeared (no live session can exist without the
-            # bridge), else the 8 s worst case. A live machine that is
-            # merely warming up briefly shows the static picture, then the
-            # engine's re-ship replaces the whole DOM - a progressive-
-            # enhancement flash, not an error. Probe overrides:
-            # window.__gb2_mmFast / window.__gb2_mmDelay.
-            '    try {\n',
-            '      var __mmSnap0 = document.getElementById(__gb2_id + "-snap");\n',
-            '      if (__mmSnap0) __mmSnap0.style.display = "block";\n',
-            '    } catch (_eMS0) {}\n',
+            # Staged confirmation (the caption claims "not installed
+            # here", so it must never flash on a live-but-warming
+            # machine): ~3 s when window.setOption never appeared (no
+            # live session exists without the bridge), else the 8 s
+            # worst case. Probe overrides: __gb2_mmFast / __gb2_mmDelay.
             '    var __gb2_mmFin = function () { try {\n',
             '      var __mmH = document.getElementById(__gb2_id);\n',
             '      if (!__mmH || !__mmH.isConnected) return;\n',
@@ -2282,6 +2283,14 @@ graphbuilder2_html <- function(bars,
         # note + clientBundleHash self-heal above own that path. The
         # exception is re-thrown ASYNCHRONOUSLY so devtools / pageerror
         # probes still see the original error.
+        # Live engine takes over: hide the visible-by-default snapshot
+        # BEFORE rendering so a working machine never shows both. Every
+        # script-less context (jamovi's export pipeline runs no scripts -
+        # Torry's PDF finding) keeps the picture by construction.
+        'try { if (typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render) {\n',
+        '  var __gb2_sfLive = document.getElementById(__gb2_id + "-snap");\n',
+        '  if (__gb2_sfLive) __gb2_sfLive.style.display = "none";\n',
+        '} } catch (_eSfL) {}\n',
         'var __gb2_renderErr = null, __gb2_renderExc = null;\n',
         'try {\n',
         '  if (typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render) {\n',
@@ -2299,6 +2308,10 @@ graphbuilder2_html <- function(bars,
         '  } catch (_eM) { __gb2_renderErr = "unknown render exception"; }\n',
         '}\n',
         'if (__gb2_renderErr) { try {\n',
+        # A failed render re-reveals the snapshot (it was hidden above on
+        # the engine-present path): the user gets the picture AND the
+        # error box instead of the box alone.
+        '  try { var __gb2_sfErr = document.getElementById(__gb2_id + "-snap"); if (__gb2_sfErr) __gb2_sfErr.style.display = "block"; } catch (_eSfE) {}\n',
         '  var __gb2_eh = document.getElementById(__gb2_id);\n',
         '  if (__gb2_eh) {\n',
         # Static skeleton via innerHTML; every dynamic string lands via
@@ -2568,9 +2581,15 @@ graphbuilder2_html <- function(bars,
         error = function(e) ""
     )
     if (!nzchar(b64)) return("")
+    # VISIBLE by default (Jul 2026 rework, Torry's 2nd field test): the
+    # jamovi export pipeline runs NO scripts, so a script-revealed image
+    # can never reach a PDF/HTML export. Inverted: the picture shows
+    # unless a LIVE engine hides it (the loader does, pre-render) -
+    # script-less contexts (exports, module-less first paint) get the
+    # picture for free.
     paste0(
         '<div id="', widget_id, '-snap" data-role="gb2-static-fallback" ',
-        'style="display:none;margin:6px 10px;">',
+        'style="display:block;margin:6px 10px;">',
         '<img alt="Chart (static snapshot)" ',
         'style="max-width:100%;height:auto;display:block;border:1px solid #e3e3e3;border-radius:6px;" ',
         'src="data:image/svg+xml;base64,', b64, '">',
@@ -2589,6 +2608,9 @@ graphbuilder2_html <- function(bars,
         'view and edit the live chart. ',
         '<a data-role="gb2-snap-save" download="chart.svg" href="#" ',
         'style="color:#3573bd;">Save image (SVG)</a>',
+        ' If that link does nothing here, export the results as HTML ',
+        '(jamovi menu, Export) and open it in a browser - the images are ',
+        'embedded there and can be saved normally.',
         '</div></div>'
     )
 }

@@ -105,6 +105,10 @@ const snapState = () => ({
            st.fallback !== null && st.fallback.shown && st.fallback.imgOk);
     expect('module-less: caption still held back at load',
            !st.fallback.captionShown);
+    expect('module-less: NO "Loading chart engine" noise over the picture',
+           st.bodyText.indexOf('Loading chart engine') < 0);
+    expect('module-less: host hidden from the start (picture only)',
+           !st.hostShown);
     await page.waitForFunction(() => {
         const c = document.querySelector('[data-role=gb2-static-fallback-caption]');
         return c && getComputedStyle(c).display !== 'none';
