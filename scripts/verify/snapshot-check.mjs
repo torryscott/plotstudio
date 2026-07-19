@@ -203,20 +203,31 @@ window.__gb2_snapDelay = 400;`;
 //      <img>. Live machine -> the loader hides the native copy (and its
 //      heading); module-less -> the native copy IS the picture and our
 //      data-URI img is suppressed so the chart never doubles.
+// jamovi's REAL Image-result structure (verified in the resultsview
+// source): a <jmv-results-image> custom element = hN.jmv-results-image-
+// title + a div whose css background-image carries the picture. No
+// <img> tag - the v1 matcher's img scan was structurally blind to it.
 const INJECT_NATIVE = `document.addEventListener('DOMContentLoaded', function () {
-    const h = document.createElement('h2'); h.textContent = 'Chart (static copy)';
-    const i = document.createElement('img'); i.setAttribute('src', 'res/64/snapshotImage.png');
-    i.setAttribute('data-probe-native', '1');
-    document.body.appendChild(h); document.body.appendChild(i);
+    const w = document.createElement('jmv-results-image');
+    w.setAttribute('data-probe-native', '1');
+    w.style.display = 'block';
+    const h = document.createElement('h2');
+    h.className = 'jmv-results-image-title';
+    h.textContent = 'Chart (static copy)';
+    const d = document.createElement('div');
+    d.style.cssText = "width:200px;height:120px;background-image:url('res/64.png')";
+    w.appendChild(h); w.appendChild(d);
+    document.body.appendChild(w);
 });`;
 const nativeState = () => {
-    const i = document.querySelector('[data-probe-native]');
-    const hs = [...document.querySelectorAll('h2')]
-        .filter(h => (h.textContent || '').trim() === 'Chart (static copy)');
+    const w = document.querySelector('[data-probe-native]');
+    const h = w ? w.querySelector('.jmv-results-image-title') : null;
     const ourImg = document.querySelector('[data-role=gb2-static-fallback] img');
     return {
-        natShown: !!(i && getComputedStyle(i).display !== 'none'),
-        headShown: hs.length ? getComputedStyle(hs[0]).display !== 'none' : null,
+        natShown: !!(w && getComputedStyle(w).display !== 'none'),
+        // children of a display:none parent keep their own computed
+        // display - actual rendering is what getClientRects answers
+        headShown: h ? h.getClientRects().length > 0 : null,
         ourImgShown: !!(ourImg && getComputedStyle(ourImg).display !== 'none'),
     };
 };

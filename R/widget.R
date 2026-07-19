@@ -2291,19 +2291,20 @@ graphbuilder2_html <- function(bars,
         # exports keep it); no engine -> the native copy IS the picture,
         # so hide our data-URI img and keep just the caption. Re-runs at
         # 400/1500 ms because the Image element can mount after us.
+        # Matcher v2 (field-corrected, Torry's duplicate screenshot):
+        # jamovi Image results render as a <jmv-results-image> custom
+        # element - an hN.jmv-results-image-title heading + a DIV whose
+        # css background-image is the served picture. There is NO <img>
+        # tag (verified in the resultsview source), which is why the v1
+        # img scan matched nothing. Match the custom element by its
+        # title text and hide/show it WHOLE (heading included).
         'var __gb2_snapNativeSync = function () { try {\n',
-        '  var seq = document.querySelectorAll("h1,h2,h3,h4,h5,img");\n',
-        '  var lastTxt = "", lastEl = null, nat = [];\n',
-        '  for (var i = 0; i < seq.length; i++) {\n',
-        '    var el = seq[i];\n',
-        '    if (el.tagName === "IMG") {\n',
-        '      var src = el.getAttribute("src") || "";\n',
-        '      if (src.indexOf("data:") === 0) continue;\n',
-        '      if (src.indexOf("snapshotImage") >= 0 || lastTxt === "Chart (static copy)") {\n',
-        '        nat.push(el);\n',
-        '        if (lastEl && lastTxt === "Chart (static copy)") nat.push(lastEl);\n',
-        '      }\n',
-        '    } else { lastTxt = (el.textContent || "").replace(/^\\s+|\\s+$/g, ""); lastEl = el; }\n',
+        '  var els = document.querySelectorAll("jmv-results-image");\n',
+        '  var nat = [];\n',
+        '  for (var i = 0; i < els.length; i++) {\n',
+        '    var t = els[i].querySelector(".jmv-results-image-title");\n',
+        '    var txt = t ? (t.textContent || "").replace(/^\\s+|\\s+$/g, "") : "";\n',
+        '    if (txt === "Chart (static copy)") nat.push(els[i]);\n',
         '  }\n',
         '  if (!nat.length) return;\n',
         '  var live = !!(typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render);\n',
