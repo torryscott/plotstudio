@@ -63,9 +63,13 @@ const snapState = () => ({
         const d = document.querySelector('[data-role=gb2-static-fallback]');
         if (!d) return null;
         const img = d.querySelector('img');
+        const cap = d.querySelector('[data-role=gb2-static-fallback-caption]');
+        const save = d.querySelector('[data-role=gb2-snap-save]');
         return {
             shown: getComputedStyle(d).display !== 'none',
             imgOk: !!(img && (img.getAttribute('src') || '').indexOf('data:image/svg+xml;base64,') === 0),
+            captionShown: !!(cap && getComputedStyle(cap).display !== 'none'),
+            saveWired: !!(save && (save.getAttribute('href') || '').indexOf('data:image/svg+xml;base64,') === 0),
         };
     })(),
     chart: document.querySelectorAll('svg [data-bar-cat]').length,
@@ -91,19 +95,42 @@ const snapState = () => ({
     await ctx.close();
 }
 
-// ---- 2. module-less machine WITH snapshot: reveal the picture
+// ---- 2. module-less machine WITH snapshot: INSTANT picture, staged caption
 {
     const { ctx, page } = await freshPage('window.__gb2_mmDelay = 1500;');
     await page.goto('file://' + path.join(OUT, 'snap-cached.html'));
+    await page.waitForTimeout(350); // scripts have run; timers have NOT
+    let st = await page.evaluate(snapState);
+    expect('module-less: img revealed IMMEDIATELY (Torry\'s 20 s report)',
+           st.fallback !== null && st.fallback.shown && st.fallback.imgOk);
+    expect('module-less: caption still held back at load',
+           !st.fallback.captionShown);
     await page.waitForFunction(() => {
-        const d = document.querySelector('[data-role=gb2-static-fallback]');
-        return d && getComputedStyle(d).display !== 'none';
+        const c = document.querySelector('[data-role=gb2-static-fallback-caption]');
+        return c && getComputedStyle(c).display !== 'none';
     }, null, { timeout: 12000 });
-    const st = await page.evaluate(snapState);
-    expect('module-less: snapshot img revealed', st.fallback.shown && st.fallback.imgOk);
+    st = await page.evaluate(snapState);
+    expect('module-less: caption confirmed after the window', st.fallback.captionShown);
+    expect('module-less: Save image link wired to the data URI', st.fallback.saveWired);
     expect('module-less: host (loading note) hidden', !st.hostShown);
     expect('module-less: caption explains + points at install',
            st.bodyText.indexOf('made with the Plot Studio module') >= 0);
+    await ctx.close();
+}
+
+// ---- 2b. fast path: no setOption bridge at all -> caption at ~3 s,
+//          NOT the 8 s worst case (mmDelay pinned high to isolate it)
+{
+    const { ctx, page } = await freshPage('window.__gb2_mmDelay = 60000;');
+    const t0 = Date.now();
+    await page.goto('file://' + path.join(OUT, 'snap-cached.html'));
+    await page.waitForFunction(() => {
+        const c = document.querySelector('[data-role=gb2-static-fallback-caption]');
+        return c && getComputedStyle(c).display !== 'none';
+    }, null, { timeout: 10000 });
+    const dt = Date.now() - t0;
+    expect('fast path: caption via the 3 s no-bridge check (' + dt + ' ms)',
+           dt < 6000);
     await ctx.close();
 }
 

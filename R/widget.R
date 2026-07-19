@@ -2121,28 +2121,46 @@ graphbuilder2_html <- function(bars,
             '      var __gb2_hostHeal = document.getElementById(__gb2_id);\n',
             "      if (__gb2_hostHeal) __gb2_hostHeal.innerHTML = '<div style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">Loading chart engine…<span style=\"display:block;margin-top:6px;font-size:11.5px;color:#999;\">This resolves by itself in a few seconds. If it does not, please screenshot this and report it with your jamovi version.</span></div>';\n",
             '    } catch (_eH) {}\n',
-            # Module-missing detection (Jul 2026, the shared-.omv case):
-            # on a live machine the self-heal poke below triggers a re-ship
-            # within a few seconds, which REPLACES this DOM (host no longer
-            # connected) or defines the engine. If neither happened after
-            # the window, no Plot Studio session is answering - the file
-            # was opened without the module installed. Reveal the static
-            # snapshot when one is embedded, else say the truth instead of
-            # "resolves in a few seconds" forever. Window overridable for
-            # probes via window.__gb2_mmDelay.
+            # Module-missing handling (Jul 2026, the shared-.omv case;
+            # timing reworked after Torry's 20-second field report):
+            # the static snapshot IMG reveals IMMEDIATELY when no engine
+            # answers at loader time - an instant picture, and the state
+            # jamovi's export re-render captures. Only the CAPTION (which
+            # claims the module is not installed) and the no-snapshot
+            # message wait for confirmation: ~3 s when window.setOption
+            # never appeared (no live session can exist without the
+            # bridge), else the 8 s worst case. A live machine that is
+            # merely warming up briefly shows the static picture, then the
+            # engine's re-ship replaces the whole DOM - a progressive-
+            # enhancement flash, not an error. Probe overrides:
+            # window.__gb2_mmFast / window.__gb2_mmDelay.
             '    try {\n',
-            '      setTimeout(function () { try {\n',
-            '        var __mmH = document.getElementById(__gb2_id);\n',
-            '        if (!__mmH || !__mmH.isConnected) return;\n',
-            '        if (window.GraphBuilder2 && window.GraphBuilder2.render) return;\n',
-            '        var __mmS = document.getElementById(__gb2_id + "-snap");\n',
-            '        if (__mmS) {\n',
-            '          __mmS.style.display = "block";\n',
-            '          __mmH.style.display = "none";\n',
-            '        } else {\n',
-            "          __mmH.innerHTML = '<div data-role=\"gb2-module-missing\" style=\"margin:10px;padding:12px 14px;max-width:620px;font-size:12.5px;line-height:1.55;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;\"><b>This chart needs the Plot Studio module.</b><br>It does not appear to be installed here, so the chart cannot be drawn. The data and chart settings are saved in this file: install Plot Studio (github.com/torryscott/plotstudio, Releases) and reopen the file to see the chart. If Plot Studio is installed, re-running the analysis will restore the chart.</div>';\n",
-            '        }\n',
-            '      } catch (_eMM) {} }, (typeof window.__gb2_mmDelay === "number" ? window.__gb2_mmDelay : 12000));\n',
+            '      var __mmSnap0 = document.getElementById(__gb2_id + "-snap");\n',
+            '      if (__mmSnap0) __mmSnap0.style.display = "block";\n',
+            '    } catch (_eMS0) {}\n',
+            '    var __gb2_mmFin = function () { try {\n',
+            '      var __mmH = document.getElementById(__gb2_id);\n',
+            '      if (!__mmH || !__mmH.isConnected) return;\n',
+            '      if (window.GraphBuilder2 && window.GraphBuilder2.render) return;\n',
+            '      var __mmS = document.getElementById(__gb2_id + "-snap");\n',
+            '      if (__mmS) {\n',
+            '        __mmS.style.display = "block";\n',
+            '        var __mmC = __mmS.querySelector("[data-role=gb2-static-fallback-caption]");\n',
+            '        if (__mmC) __mmC.style.display = "block";\n',
+            '        try {\n',
+            '          var __mmA = __mmS.querySelector("[data-role=gb2-snap-save]");\n',
+            '          var __mmI = __mmS.querySelector("img");\n',
+            '          if (__mmA && __mmI && __mmA.getAttribute("href") === "#") __mmA.setAttribute("href", __mmI.getAttribute("src"));\n',
+            '        } catch (_eSv) {}\n',
+            '        __mmH.style.display = "none";\n',
+            '      } else {\n',
+            "        __mmH.innerHTML = '<div data-role=\"gb2-module-missing\" style=\"margin:10px;padding:12px 14px;max-width:620px;font-size:12.5px;line-height:1.55;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;\"><b>This chart needs the Plot Studio module.</b><br>It does not appear to be installed here, so the chart cannot be drawn. The data and chart settings are saved in this file: install Plot Studio (github.com/torryscott/plotstudio, Releases) and reopen the file to see the chart. If Plot Studio is installed, re-running the analysis will restore the chart.</div>';\n",
+            '      }\n',
+            '    } catch (_eMM) {} };\n',
+            '    try {\n',
+            '      setTimeout(function () { try { if (typeof window.setOption !== "function") __gb2_mmFin(); } catch (_eF1) {} },\n',
+            '                 (typeof window.__gb2_mmFast === "number" ? window.__gb2_mmFast : 3000));\n',
+            '      setTimeout(__gb2_mmFin, (typeof window.__gb2_mmDelay === "number" ? window.__gb2_mmDelay : 8000));\n',
             '    } catch (_eMMArm) {}\n',
             '  }\n',
             '  if (!__gb2_engineOk) {\n',
@@ -2556,11 +2574,21 @@ graphbuilder2_html <- function(bars,
         '<img alt="Chart (static snapshot)" ',
         'style="max-width:100%;height:auto;display:block;border:1px solid #e3e3e3;border-radius:6px;" ',
         'src="data:image/svg+xml;base64,', b64, '">',
-        '<div style="margin-top:6px;font-size:11.5px;line-height:1.5;color:#666;">',
+        # Caption is separately hidden: the IMG reveals the moment no
+        # engine is found (instant picture, also what jamovi's export
+        # re-render captures), but the caption CLAIMS the module is not
+        # installed - that must wait for the staged confirmation so it
+        # never flashes on a live machine that is merely warming up.
+        # The Save link href is wired from the img src at reveal time
+        # (never duplicated - the base64 is big).
+        '<div data-role="gb2-static-fallback-caption" ',
+        'style="display:none;margin-top:6px;font-size:11.5px;line-height:1.5;color:#666;">',
         'Static snapshot. This chart was made with the Plot Studio module for ',
         'jamovi, which is not installed here. Install it ',
         '(github.com/torryscott/plotstudio, Releases) and reopen this file to ',
-        'view and edit the live chart.',
+        'view and edit the live chart. ',
+        '<a data-role="gb2-snap-save" download="chart.svg" href="#" ',
+        'style="color:#3573bd;">Save image (SVG)</a>',
         '</div></div>'
     )
 }
@@ -2590,7 +2618,10 @@ graphbuilder2_html <- function(bars,
         'try{msg+=" [ua: "+navigator.userAgent+"]";}catch(_eU){}\n',
         'if(s)s.textContent=msg;\n',
         'd.style.opacity="1";d.style.animation="none";\n',
-        'try{var sn=document.getElementById(id+"-snap");if(sn)sn.style.display="block";}catch(_eSn){}\n',
+        'try{var sn=document.getElementById(id+"-snap");if(sn){sn.style.display="block";\n',
+        'var sc=sn.querySelector("[data-role=gb2-static-fallback-caption]");if(sc)sc.style.display="block";\n',
+        'var sa=sn.querySelector("[data-role=gb2-snap-save]");var si=sn.querySelector("img");\n',
+        'if(sa&&si&&sa.getAttribute("href")==="#")sa.setAttribute("href",si.getAttribute("src"));}}catch(_eSn){}\n',
         '}catch(_e2){}},6000);\n',
         '}catch(_e0){}})();</script>\n'
     )

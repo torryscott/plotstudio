@@ -81,7 +81,10 @@ payload_of <- function(html) {
     sub(";\nvar __gb2_id.*", "", seg)
 }
 plain <- mk()
-expect("plain: no fallback block", !grepl("gb2-static-fallback", plain, fixed = TRUE))
+# (quoted-attribute form: the LOADER script itself contains the bare
+# marker in querySelector calls on EVERY page - probe hygiene)
+expect("plain: no fallback block",
+       !grepl('data-role="gb2-static-fallback"', plain, fixed = TRUE))
 expect("plain: no chartSnapshotKey payload key",
        !grepl('"chartSnapshotKey"', payload_of(plain), fixed = TRUE))
 
@@ -94,6 +97,9 @@ expect("snap: embedded as data-URI img (safe context)",
        grepl("data:image/svg+xml;base64,", snap, fixed = TRUE))
 expect("snap: hidden by default",
        grepl('data-role="gb2-static-fallback" style="display:none', snap, fixed = TRUE))
+expect("snap: caption separately hidden + Save link present unwired",
+       grepl('data-role="gb2-static-fallback-caption" style="display:none', snap, fixed = TRUE) &&
+       grepl('data-role="gb2-snap-save" download="chart.svg" href="#"', snap, fixed = TRUE))
 expect("snap: payload carries the sig",
        grepl(paste0('"chartSnapshotKey":"', SIG, '"'), snap, fixed = TRUE))
 expect("snap: raw svg text NOT duplicated into the payload",
@@ -108,7 +114,7 @@ bad4 <- mk(chartSnapshot = GOOD_SVG)   # missing sig prefix entirely
 for (nm in c("bad1", "bad2", "bad3", "bad4")) {
     h <- get(nm)
     expect(paste0(nm, ": hostile/malformed snapshot NOT embedded"),
-           !grepl("gb2-static-fallback", h, fixed = TRUE) &&
+           !grepl('data-role="gb2-static-fallback"', h, fixed = TRUE) &&
            !grepl("alert(1)", h, fixed = TRUE))
 }
 
