@@ -219,3 +219,35 @@ patternKey <- function(patternName) {
         'none'  # default
     )
 }
+
+# ---- Static-snapshot helpers (Jul 2026) --------------------------------
+# Single source for parsing the JS-committed chartSnapshot option
+# ("<sig>|<svg>"); used by graphbuilder2_html()'s hidden-fallback embed
+# AND the native snapshot Image result (distplotbuilder prototype).
+# Returns list(key, svg) or NULL. The sanitize rules are load-bearing:
+# the option can arrive from a crafted .omv, so the body must look like
+# an SVG and carry no script element (the embed contexts - <img> data
+# URI, rsvg rasterization - are the second fence).
+gb_parse_snapshot <- function(raw) {
+    if (!is.character(raw) || length(raw) != 1L || is.na(raw) ||
+        !nzchar(raw) || nchar(raw) >= 4000000) return(NULL)
+    m <- regmatches(raw, regexec("^([0-9]+:-?[0-9]+)\\|", raw))[[1]]
+    if (length(m) != 2L) return(NULL)
+    body <- substring(raw, nchar(m[1]) + 1L)
+    if (!grepl("^\\s*<svg[\\s>]", body, perl = TRUE)) return(NULL)
+    if (grepl("<script", body, ignore.case = TRUE)) return(NULL)
+    list(key = m[2], svg = body)
+}
+
+# Width/height (px) off the SVG root tag, clamped to sane display
+# bounds; defaults when the attributes are absent or unparseable.
+gb_svg_dims <- function(svg, default_w = 700, default_h = 450) {
+    root <- regmatches(svg, regexpr("<svg[^>]*>", svg))
+    grab <- function(attr, def) {
+        if (length(root) != 1L) return(def)
+        m <- regmatches(root, regexec(paste0('\\s', attr, '="([0-9.]+)"'), root))[[1]]
+        v <- if (length(m) == 2L) suppressWarnings(as.numeric(m[2])) else NA_real_
+        if (is.finite(v) && v >= 100 && v <= 3000) v else def
+    }
+    list(w = round(grab("width", default_w)), h = round(grab("height", default_h)))
+}

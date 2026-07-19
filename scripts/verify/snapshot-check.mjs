@@ -198,6 +198,57 @@ window.__gb2_snapDelay = 400;`;
     await ctx.close();
 }
 
+// ---- 6 + 7. native snapshot-Image coordination (the Distribution
+//      prototype): jamovi renders the snapshotImage result as a served
+//      <img>. Live machine -> the loader hides the native copy (and its
+//      heading); module-less -> the native copy IS the picture and our
+//      data-URI img is suppressed so the chart never doubles.
+const INJECT_NATIVE = `document.addEventListener('DOMContentLoaded', function () {
+    const h = document.createElement('h2'); h.textContent = 'Chart (static copy)';
+    const i = document.createElement('img'); i.setAttribute('src', 'res/64/snapshotImage.png');
+    i.setAttribute('data-probe-native', '1');
+    document.body.appendChild(h); document.body.appendChild(i);
+});`;
+const nativeState = () => {
+    const i = document.querySelector('[data-probe-native]');
+    const hs = [...document.querySelectorAll('h2')]
+        .filter(h => (h.textContent || '').trim() === 'Chart (static copy)');
+    const ourImg = document.querySelector('[data-role=gb2-static-fallback] img');
+    return {
+        natShown: !!(i && getComputedStyle(i).display !== 'none'),
+        headShown: hs.length ? getComputedStyle(hs[0]).display !== 'none' : null,
+        ourImgShown: !!(ourImg && getComputedStyle(ourImg).display !== 'none'),
+    };
+};
+{
+    const { ctx, page } = await freshPage(INJECT_NATIVE);
+    await page.goto('file://' + path.join(OUT, 'snap-inline.html'));
+    await page.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0,
+        null, { timeout: 30000 });
+    await page.waitForTimeout(2000); // outlast the 400/1500 ms sync passes
+    const st = await page.evaluate(nativeState);
+    expect('native-live: native copy hidden on a live machine', !st.natShown);
+    expect('native-live: its heading hidden too', st.headShown === false);
+    await ctx.close();
+}
+{
+    const { ctx, page } = await freshPage(
+        INJECT_NATIVE + '\nwindow.__gb2_mmDelay = 1500;');
+    await page.goto('file://' + path.join(OUT, 'snap-cached.html'));
+    await page.waitForTimeout(2000);
+    const st = await page.evaluate(nativeState);
+    expect('native-moduleless: native copy stays visible', st.natShown);
+    expect('native-moduleless: our data-URI img suppressed (no double picture)',
+           !st.ourImgShown);
+    const cap = await page.evaluate(() => {
+        const c = document.querySelector('[data-role=gb2-static-fallback-caption]');
+        return c ? getComputedStyle(c).display !== 'none' : false;
+    });
+    expect('native-moduleless: caption still explains install', cap);
+    await ctx.close();
+}
+
 await browser.close();
 console.log(fails === 0 ? 'snapshot-check: ALL OK' : `snapshot-check: ${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

@@ -1963,21 +1963,9 @@ graphbuilder2_html <- function(bars,
     # payload (conditional key - absent when no snapshot, so every
     # existing payload stays byte-identical); the JS compares it against
     # its own serialization to skip re-committing an unchanged snapshot.
-    snap_key <- ""
-    snap_svg <- ""
-    if (is.character(chart_snapshot) && length(chart_snapshot) == 1L &&
-        nzchar(chart_snapshot) && nchar(chart_snapshot) < 4000000) {
-        snap_m <- regmatches(chart_snapshot,
-                             regexec("^([0-9]+:-?[0-9]+)\\|", chart_snapshot))[[1]]
-        if (length(snap_m) == 2L) {
-            snap_body <- substring(chart_snapshot, nchar(snap_m[1]) + 1L)
-            if (grepl("^\\s*<svg[\\s>]", snap_body, perl = TRUE) &&
-                !grepl("<script", snap_body, ignore.case = TRUE)) {
-                snap_key <- snap_m[2]
-                snap_svg <- snap_body
-            }
-        }
-    }
+    snap_parsed <- gb_parse_snapshot(chart_snapshot)
+    snap_key <- if (is.null(snap_parsed)) "" else snap_parsed$key
+    snap_svg <- if (is.null(snap_parsed)) "" else snap_parsed$svg
     if (nzchar(snap_key))
         payload$chartSnapshotKey <- snap_key
     # Native-panel preview keys: shipped ONLY when the module forwards
@@ -2291,6 +2279,41 @@ graphbuilder2_html <- function(bars,
         '  var __gb2_sfLive = document.getElementById(__gb2_id + "-snap");\n',
         '  if (__gb2_sfLive) __gb2_sfLive.style.display = "none";\n',
         '} } catch (_eSfL) {}\n',
+        # Native snapshot-Image coordination (prototype, Distribution):
+        # jamovi renders the snapshotImage result as an ordinary served
+        # <img> in this analysis's document. Matcher: src contains the
+        # result name, OR the img follows a heading titled exactly
+        # "Chart (static copy)" (document-order walk over headings+imgs;
+        # the matched heading is hidden/shown along with its img).
+        # FAIL-OPEN: no match means do nothing - a duplicated picture
+        # beats hiding someone else's plot. Live engine -> hide the
+        # native copy on screen (jamovi's export reads the MODEL, so
+        # exports keep it); no engine -> the native copy IS the picture,
+        # so hide our data-URI img and keep just the caption. Re-runs at
+        # 400/1500 ms because the Image element can mount after us.
+        'var __gb2_snapNativeSync = function () { try {\n',
+        '  var seq = document.querySelectorAll("h1,h2,h3,h4,h5,img");\n',
+        '  var lastTxt = "", lastEl = null, nat = [];\n',
+        '  for (var i = 0; i < seq.length; i++) {\n',
+        '    var el = seq[i];\n',
+        '    if (el.tagName === "IMG") {\n',
+        '      var src = el.getAttribute("src") || "";\n',
+        '      if (src.indexOf("data:") === 0) continue;\n',
+        '      if (src.indexOf("snapshotImage") >= 0 || lastTxt === "Chart (static copy)") {\n',
+        '        nat.push(el);\n',
+        '        if (lastEl && lastTxt === "Chart (static copy)") nat.push(lastEl);\n',
+        '      }\n',
+        '    } else { lastTxt = (el.textContent || "").replace(/^\\s+|\\s+$/g, ""); lastEl = el; }\n',
+        '  }\n',
+        '  if (!nat.length) return;\n',
+        '  var live = !!(typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render);\n',
+        '  for (var j = 0; j < nat.length; j++) nat[j].style.display = live ? "none" : "";\n',
+        '  if (!live) {\n',
+        '    var __nsSn = document.getElementById(__gb2_id + "-snap");\n',
+        '    if (__nsSn) { var __nsSi = __nsSn.querySelector("img"); if (__nsSi) __nsSi.style.display = "none"; }\n',
+        '  }\n',
+        '} catch (_eNs) {} };\n',
+        'try { __gb2_snapNativeSync(); setTimeout(__gb2_snapNativeSync, 400); setTimeout(__gb2_snapNativeSync, 1500); } catch (_eNsA) {}\n',
         'var __gb2_renderErr = null, __gb2_renderExc = null;\n',
         'try {\n',
         '  if (typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render) {\n',
