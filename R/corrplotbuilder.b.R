@@ -188,7 +188,7 @@ corrplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6C
             spec_real_keys <- list(
                 "data", "vars", "graphType", "corrMethod",
                 "exportRequest", "exportPath", "clientBundleHash",
-                "styleLibrary", "styleStamp", "annotationsJson", "chartSpec"
+                "styleLibrary", "styleStamp", "annotationsJson", "chartSnapshot", "chartSpec"
             )
             # Allowlist of keys the widget may fold into the blob (corr has no
             # axis titles / hidden-points badge, so it is just the spec table
@@ -199,6 +199,9 @@ corrplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6C
                                 character(1))
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = list(),
                 graph_type = self$options$graphType,
                 graph_type_choices = list(

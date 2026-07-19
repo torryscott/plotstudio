@@ -435,12 +435,15 @@ freqplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6C
                 "graphType", "summaryFunc", "errorBarType", "showDataPoints",
                 "exportRequest", "exportPath", "clientBundleHash",
                 "paletteLibrary", "styleLibrary", "styleStamp",
-                "annotationsJson", "chartSpec"
+                "annotationsJson", "chartSnapshot", "chartSpec"
             )
             spec_keys <- vapply(.freqplotbuilderSpecTable, function(r) r$opt,
                                 character(1))
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = bars,
                 graph_type = gtype,
                 graph_type_choices = list( list(name = "bar", label = "Bar"), list(name = "pie", label = "Pie"), list(name = "donut", label = "Donut"), list(name = "pareto", label = "Pareto") ),

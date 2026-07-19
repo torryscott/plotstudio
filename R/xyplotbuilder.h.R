@@ -7,6 +7,7 @@ xyplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
     public = list(
         initialize = function(
             annotationsJson = "",
+            chartSnapshot = "",
             clientBundleHash = "",
             errorBarType = "se",
             exportPath = "",
@@ -45,6 +46,11 @@ xyplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
             private$..annotationsJson <- jmvcore::OptionString$new(
                 "annotationsJson",
                 annotationsJson,
+                default="",
+                hidden=TRUE)
+            private$..chartSnapshot <- jmvcore::OptionString$new(
+                "chartSnapshot",
+                chartSnapshot,
                 default="",
                 hidden=TRUE)
             private$..clientBundleHash <- jmvcore::OptionString$new(
@@ -244,6 +250,7 @@ xyplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
                 hidden=TRUE)
 
             self$.addOption(private$..annotationsJson)
+            self$.addOption(private$..chartSnapshot)
             self$.addOption(private$..clientBundleHash)
             self$.addOption(private$..errorBarType)
             self$.addOption(private$..exportPath)
@@ -275,6 +282,7 @@ xyplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
         }),
     active = list(
         annotationsJson = function() private$..annotationsJson$value,
+        chartSnapshot = function() private$..chartSnapshot$value,
         clientBundleHash = function() private$..clientBundleHash$value,
         errorBarType = function() private$..errorBarType$value,
         exportPath = function() private$..exportPath$value,
@@ -305,6 +313,7 @@ xyplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
         chartSpec = function() private$..chartSpec$value),
     private = list(
         ..annotationsJson = NA,
+        ..chartSnapshot = NA,
         ..clientBundleHash = NA,
         ..errorBarType = NA,
         ..exportPath = NA,
@@ -389,6 +398,7 @@ xyplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class(
 #' to a binned tile heatmap for dense data.
 #' 
 #' @param annotationsJson .
+#' @param chartSnapshot .
 #' @param clientBundleHash .
 #' @param data .
 #' @param errorBarType .
@@ -427,6 +437,7 @@ xyplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class(
 #' @export
 xyplotbuilder <- function(
     annotationsJson = "",
+    chartSnapshot = "",
     clientBundleHash = "",
     data,
     errorBarType = "se",
@@ -481,6 +492,7 @@ xyplotbuilder <- function(
 
     options <- xyplotbuilderOptions$new(
         annotationsJson = annotationsJson,
+        chartSnapshot = chartSnapshot,
         clientBundleHash = clientBundleHash,
         errorBarType = errorBarType,
         exportPath = exportPath,

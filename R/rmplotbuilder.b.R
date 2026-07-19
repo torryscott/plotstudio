@@ -606,12 +606,15 @@ rmplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Cla
                 "connectSubjects", "displayRoles", "showDataPoints",
                 "exportRequest", "exportPath", "clientBundleHash",
                 "paletteLibrary", "styleLibrary", "styleStamp",
-                "annotationsJson", "chartSpec"
+                "annotationsJson", "chartSnapshot", "chartSpec"
             )
             spec_keys <- vapply(.rmplotbuilderSpecTable, function(r) r$opt,
                                 character(1))
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = bars,
                 summary_func = summary_func,
                 error_bar_type = error_type,

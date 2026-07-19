@@ -435,7 +435,7 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
                 "graphType", "summaryFunc", "errorBarType", "showDataPoints",
                 "exportRequest", "exportPath", "clientBundleHash",
                 "paletteLibrary", "styleLibrary", "styleStamp",
-                "annotationsJson", "chartSpec"
+                "annotationsJson", "chartSnapshot", "chartSpec"
             )
             # Allowlist of the keys the widget legitimately folds into the
             # chartSpec blob: the style-option names it routes (the spec
@@ -454,6 +454,9 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
             )
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = bars,
                 # Ship the stat options so the client-side panel preview can
                 # diff + recompute cells optimistically (graphbuilder2.js

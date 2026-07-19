@@ -7,6 +7,7 @@ corrplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
     public = list(
         initialize = function(
             annotationsJson = "",
+            chartSnapshot = "",
             clientBundleHash = "",
             corrMethod = "pearson",
             exportPath = "",
@@ -26,6 +27,11 @@ corrplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
             private$..annotationsJson <- jmvcore::OptionString$new(
                 "annotationsJson",
                 annotationsJson,
+                default="",
+                hidden=TRUE)
+            private$..chartSnapshot <- jmvcore::OptionString$new(
+                "chartSnapshot",
+                chartSnapshot,
                 default="",
                 hidden=TRUE)
             private$..clientBundleHash <- jmvcore::OptionString$new(
@@ -87,6 +93,7 @@ corrplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
                 hidden=TRUE)
 
             self$.addOption(private$..annotationsJson)
+            self$.addOption(private$..chartSnapshot)
             self$.addOption(private$..clientBundleHash)
             self$.addOption(private$..corrMethod)
             self$.addOption(private$..exportPath)
@@ -99,6 +106,7 @@ corrplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
         }),
     active = list(
         annotationsJson = function() private$..annotationsJson$value,
+        chartSnapshot = function() private$..chartSnapshot$value,
         clientBundleHash = function() private$..clientBundleHash$value,
         corrMethod = function() private$..corrMethod$value,
         exportPath = function() private$..exportPath$value,
@@ -110,6 +118,7 @@ corrplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
         chartSpec = function() private$..chartSpec$value),
     private = list(
         ..annotationsJson = NA,
+        ..chartSnapshot = NA,
         ..clientBundleHash = NA,
         ..corrMethod = NA,
         ..exportPath = NA,
@@ -175,6 +184,7 @@ corrplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Clas
 #' over the triangle, diagonal, and nonsignificant cells.
 #' 
 #' @param annotationsJson .
+#' @param chartSnapshot .
 #' @param clientBundleHash .
 #' @param corrMethod .
 #' @param data .
@@ -194,6 +204,7 @@ corrplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Clas
 #' @export
 corrplotbuilder <- function(
     annotationsJson = "",
+    chartSnapshot = "",
     clientBundleHash = "",
     corrMethod = "pearson",
     data,
@@ -217,6 +228,7 @@ corrplotbuilder <- function(
 
     options <- corrplotbuilderOptions$new(
         annotationsJson = annotationsJson,
+        chartSnapshot = chartSnapshot,
         clientBundleHash = clientBundleHash,
         corrMethod = corrMethod,
         exportPath = exportPath,

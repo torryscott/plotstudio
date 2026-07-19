@@ -129,6 +129,18 @@ else
     fi
 fi
 
+echo "== static-snapshot fallback (chartSnapshot: commit -> sanitize -> embed -> module-less reveal)"
+if GB2_SNAP_OUT="$OUT-snap" Rscript "$HERE/snapshot-probe.R"; then
+    GB2_SNAP_OUT="$OUT-snap" node "$HERE/snapshot-check.mjs"
+else
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "   skipped: jmvcore not available"
+    else
+        exit "$rc"
+    fi
+fi
+
 if [ "$EXTRAS" = "1" ]; then
     echo "== extras: accessibility audit (axe-core, WCAG A/AA)"
     # The wizard is not a battery page (helpmechoose has no chart);

@@ -1299,12 +1299,15 @@ xyplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Cla
                 "xyMarginalBins", "xyCILevel", "xyEllipseLevel",
                 "xyStatsCorrType", "exportRequest", "exportPath",
                 "clientBundleHash", "paletteLibrary", "styleLibrary",
-                "styleStamp", "annotationsJson", "chartSpec"
+                "styleStamp", "annotationsJson", "chartSnapshot", "chartSpec"
             )
             spec_keys <- vapply(.xyplotbuilderSpecTable, function(r) r$opt,
                                 character(1))
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = bars,
                 xy_points = xy_points,
                 xy_has_size = has_size,

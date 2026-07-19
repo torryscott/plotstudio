@@ -16,6 +16,7 @@ plotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
             showDataPoints = FALSE,
             exportRequest = "",
             exportPath = "",
+            chartSnapshot = "",
             clientBundleHash = "",
             paletteLibrary = "",
             styleLibrary = "",
@@ -106,6 +107,11 @@ plotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
                 exportPath,
                 default="",
                 hidden=TRUE)
+            private$..chartSnapshot <- jmvcore::OptionString$new(
+                "chartSnapshot",
+                chartSnapshot,
+                default="",
+                hidden=TRUE)
             private$..clientBundleHash <- jmvcore::OptionString$new(
                 "clientBundleHash",
                 clientBundleHash,
@@ -147,6 +153,7 @@ plotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
             self$.addOption(private$..showDataPoints)
             self$.addOption(private$..exportRequest)
             self$.addOption(private$..exportPath)
+            self$.addOption(private$..chartSnapshot)
             self$.addOption(private$..clientBundleHash)
             self$.addOption(private$..paletteLibrary)
             self$.addOption(private$..styleLibrary)
@@ -165,6 +172,7 @@ plotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
         showDataPoints = function() private$..showDataPoints$value,
         exportRequest = function() private$..exportRequest$value,
         exportPath = function() private$..exportPath$value,
+        chartSnapshot = function() private$..chartSnapshot$value,
         clientBundleHash = function() private$..clientBundleHash$value,
         paletteLibrary = function() private$..paletteLibrary$value,
         styleLibrary = function() private$..styleLibrary$value,
@@ -182,6 +190,7 @@ plotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
         ..showDataPoints = NA,
         ..exportRequest = NA,
         ..exportPath = NA,
+        ..chartSnapshot = NA,
         ..clientBundleHash = NA,
         ..paletteLibrary = NA,
         ..styleLibrary = NA,
@@ -254,6 +263,7 @@ plotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class(
 #' @param showDataPoints .
 #' @param exportRequest .
 #' @param exportPath .
+#' @param chartSnapshot .
 #' @param clientBundleHash .
 #' @param paletteLibrary .
 #' @param styleLibrary .
@@ -279,6 +289,7 @@ plotbuilder <- function(
     showDataPoints = FALSE,
     exportRequest = "",
     exportPath = "",
+    chartSnapshot = "",
     clientBundleHash = "",
     paletteLibrary = "",
     styleLibrary = "",
@@ -316,6 +327,7 @@ plotbuilder <- function(
         showDataPoints = showDataPoints,
         exportRequest = exportRequest,
         exportPath = exportPath,
+        chartSnapshot = chartSnapshot,
         clientBundleHash = clientBundleHash,
         paletteLibrary = paletteLibrary,
         styleLibrary = styleLibrary,

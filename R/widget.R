@@ -478,6 +478,16 @@ graphbuilder2_html <- function(bars,
                                # through this so a crafted chartSpec can't inject
                                # a non-style key over a computed payload field.
                                spec_keys = NULL,
+                               # Static-snapshot fallback (Jul 2026): the JS
+                               # commits "<sig>|<svg>" through the hidden
+                               # chartSnapshot option after a render settles;
+                               # we embed the SVG as a hidden data-URI <img>
+                               # beside the host div so a machine WITHOUT the
+                               # module still shows the chart. Only the tiny
+                               # sig enters the payload (chartSnapshotKey), so
+                               # render hashing is untouched. Additive + fully
+                               # defaulted: unmigrated callers are unchanged.
+                               chart_snapshot = "",
                                # --- Distribution (distplotbuilder) continuous-X
                                # geometry. Additive + fully defaulted: the
                                # sibling modules never pass these, so they keep
@@ -1945,6 +1955,31 @@ graphbuilder2_html <- function(bars,
         if (!is.null(spec_keys))
             payload$specKeys <- as.list(spec_keys)
     }
+    # Static-snapshot fallback: split the JS-committed "<sig>|<svg>" and
+    # SANITIZE before anything is embedded - the option can arrive from a
+    # crafted .omv, so the body must look like an SVG and carry no script
+    # (belt-and-suspenders: the embed context is <img src="data:...">,
+    # where scripts never execute anyway). Only the sig ships in the
+    # payload (conditional key - absent when no snapshot, so every
+    # existing payload stays byte-identical); the JS compares it against
+    # its own serialization to skip re-committing an unchanged snapshot.
+    snap_key <- ""
+    snap_svg <- ""
+    if (is.character(chart_snapshot) && length(chart_snapshot) == 1L &&
+        nzchar(chart_snapshot) && nchar(chart_snapshot) < 4000000) {
+        snap_m <- regmatches(chart_snapshot,
+                             regexec("^([0-9]+:-?[0-9]+)\\|", chart_snapshot))[[1]]
+        if (length(snap_m) == 2L) {
+            snap_body <- substring(chart_snapshot, nchar(snap_m[1]) + 1L)
+            if (grepl("^\\s*<svg[\\s>]", snap_body, perl = TRUE) &&
+                !grepl("<script", snap_body, ignore.case = TRUE)) {
+                snap_key <- snap_m[2]
+                snap_svg <- snap_body
+            }
+        }
+    }
+    if (nzchar(snap_key))
+        payload$chartSnapshotKey <- snap_key
     # Native-panel preview keys: shipped ONLY when the module forwards
     # them (Compare Groups / Repeated Measures), so other modules'
     # payloads stay byte-stable and the JS fold gate (`typeof data[k]
@@ -2086,6 +2121,29 @@ graphbuilder2_html <- function(bars,
             '      var __gb2_hostHeal = document.getElementById(__gb2_id);\n',
             "      if (__gb2_hostHeal) __gb2_hostHeal.innerHTML = '<div style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">Loading chart engine…<span style=\"display:block;margin-top:6px;font-size:11.5px;color:#999;\">This resolves by itself in a few seconds. If it does not, please screenshot this and report it with your jamovi version.</span></div>';\n",
             '    } catch (_eH) {}\n',
+            # Module-missing detection (Jul 2026, the shared-.omv case):
+            # on a live machine the self-heal poke below triggers a re-ship
+            # within a few seconds, which REPLACES this DOM (host no longer
+            # connected) or defines the engine. If neither happened after
+            # the window, no Plot Studio session is answering - the file
+            # was opened without the module installed. Reveal the static
+            # snapshot when one is embedded, else say the truth instead of
+            # "resolves in a few seconds" forever. Window overridable for
+            # probes via window.__gb2_mmDelay.
+            '    try {\n',
+            '      setTimeout(function () { try {\n',
+            '        var __mmH = document.getElementById(__gb2_id);\n',
+            '        if (!__mmH || !__mmH.isConnected) return;\n',
+            '        if (window.GraphBuilder2 && window.GraphBuilder2.render) return;\n',
+            '        var __mmS = document.getElementById(__gb2_id + "-snap");\n',
+            '        if (__mmS) {\n',
+            '          __mmS.style.display = "block";\n',
+            '          __mmH.style.display = "none";\n',
+            '        } else {\n',
+            "          __mmH.innerHTML = '<div data-role=\"gb2-module-missing\" style=\"margin:10px;padding:12px 14px;max-width:620px;font-size:12.5px;line-height:1.55;color:#555;background:#f7f7f7;border:1px solid #ddd;border-radius:6px;\"><b>This chart needs the Plot Studio module.</b><br>It does not appear to be installed here, so the chart cannot be drawn. The data and chart settings are saved in this file: install Plot Studio (github.com/torryscott/plotstudio, Releases) and reopen the file to see the chart. If Plot Studio is installed, re-running the analysis will restore the chart.</div>';\n",
+            '        }\n',
+            '      } catch (_eMM) {} }, (typeof window.__gb2_mmDelay === "number" ? window.__gb2_mmDelay : 12000));\n',
+            '    } catch (_eMMArm) {}\n',
             '  }\n',
             '  if (!__gb2_engineOk) {\n',
             '    (function __gb2_poke(n) {\n',
@@ -2171,6 +2229,10 @@ graphbuilder2_html <- function(bars,
         # Built-without-minify note ("" in a healthy build). AFTER the
         # host div so render()'s host wipe never removes it.
         .gb2_min_missing_note_html(),
+        # Static-snapshot fallback ("" when no snapshot committed yet).
+        # Hidden; the cached-branch module-missing timer and the diag
+        # primer reveal it when no engine ever answers.
+        .gb2_snapshot_fallback_html(widget_id, snap_svg),
         # Layer A.5: standalone ES5 primer - runs even when the main
         # script below dies on a parse error (separate script tags
         # parse independently) and upgrades the Layer A box.
@@ -2474,6 +2536,35 @@ graphbuilder2_html <- function(bars,
     )
 }
 
+# The static-snapshot fallback block: the settled chart, serialized by
+# the JS export builder and committed back through the chartSnapshot
+# option, embedded as a data-URI <img>. The img context is the safe way
+# to display an SVG that technically arrives from persisted data:
+# scripts inside an <img> SVG never execute and it can load nothing
+# external. Hidden by default; revealed only when no engine answers
+# (a machine without the module installed - the shared-.omv case).
+.gb2_snapshot_fallback_html <- function(widget_id, snap_svg) {
+    if (!nzchar(snap_svg)) return("")
+    b64 <- tryCatch(
+        gsub("[\r\n]", "", jsonlite::base64_enc(charToRaw(enc2utf8(snap_svg)))),
+        error = function(e) ""
+    )
+    if (!nzchar(b64)) return("")
+    paste0(
+        '<div id="', widget_id, '-snap" data-role="gb2-static-fallback" ',
+        'style="display:none;margin:6px 10px;">',
+        '<img alt="Chart (static snapshot)" ',
+        'style="max-width:100%;height:auto;display:block;border:1px solid #e3e3e3;border-radius:6px;" ',
+        'src="data:image/svg+xml;base64,', b64, '">',
+        '<div style="margin-top:6px;font-size:11.5px;line-height:1.5;color:#666;">',
+        'Static snapshot. This chart was made with the Plot Studio module for ',
+        'jamovi, which is not installed here. Install it ',
+        '(github.com/torryscott/plotstudio, Releases) and reopen this file to ',
+        'view and edit the live chart.',
+        '</div></div>'
+    )
+}
+
 .gb2_diag_primer_script <- function(widget_id_json) {
     paste0(
         '<script>(function(){try{\n',
@@ -2499,6 +2590,7 @@ graphbuilder2_html <- function(bars,
         'try{msg+=" [ua: "+navigator.userAgent+"]";}catch(_eU){}\n',
         'if(s)s.textContent=msg;\n',
         'd.style.opacity="1";d.style.animation="none";\n',
+        'try{var sn=document.getElementById(id+"-snap");if(sn)sn.style.display="block";}catch(_eSn){}\n',
         '}catch(_e2){}},6000);\n',
         '}catch(_e0){}})();</script>\n'
     )

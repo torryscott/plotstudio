@@ -7,6 +7,7 @@ likertplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R
     public = list(
         initialize = function(
             annotationsJson = "",
+            chartSnapshot = "",
             clientBundleHash = "",
             exportPath = "",
             exportRequest = "",
@@ -26,6 +27,11 @@ likertplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R
             private$..annotationsJson <- jmvcore::OptionString$new(
                 "annotationsJson",
                 annotationsJson,
+                default="",
+                hidden=TRUE)
+            private$..chartSnapshot <- jmvcore::OptionString$new(
+                "chartSnapshot",
+                chartSnapshot,
                 default="",
                 hidden=TRUE)
             private$..clientBundleHash <- jmvcore::OptionString$new(
@@ -85,6 +91,7 @@ likertplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R
                 hidden=TRUE)
 
             self$.addOption(private$..annotationsJson)
+            self$.addOption(private$..chartSnapshot)
             self$.addOption(private$..clientBundleHash)
             self$.addOption(private$..exportPath)
             self$.addOption(private$..exportRequest)
@@ -97,6 +104,7 @@ likertplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R
         }),
     active = list(
         annotationsJson = function() private$..annotationsJson$value,
+        chartSnapshot = function() private$..chartSnapshot$value,
         clientBundleHash = function() private$..clientBundleHash$value,
         exportPath = function() private$..exportPath$value,
         exportRequest = function() private$..exportRequest$value,
@@ -108,6 +116,7 @@ likertplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R
         chartSpec = function() private$..chartSpec$value),
     private = list(
         ..annotationsJson = NA,
+        ..chartSnapshot = NA,
         ..clientBundleHash = NA,
         ..exportPath = NA,
         ..exportRequest = NA,
@@ -173,6 +182,7 @@ likertplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cl
 #' Drag rows to reorder the questions.
 #' 
 #' @param annotationsJson .
+#' @param chartSnapshot .
 #' @param clientBundleHash .
 #' @param data .
 #' @param exportPath .
@@ -192,6 +202,7 @@ likertplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cl
 #' @export
 likertplotbuilder <- function(
     annotationsJson = "",
+    chartSnapshot = "",
     clientBundleHash = "",
     data,
     exportPath = "",
@@ -215,6 +226,7 @@ likertplotbuilder <- function(
 
     options <- likertplotbuilderOptions$new(
         annotationsJson = annotationsJson,
+        chartSnapshot = chartSnapshot,
         clientBundleHash = clientBundleHash,
         exportPath = exportPath,
         exportRequest = exportRequest,

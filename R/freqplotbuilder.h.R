@@ -7,6 +7,7 @@ freqplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
     public = list(
         initialize = function(
             annotationsJson = "",
+            chartSnapshot = "",
             clientBundleHash = "",
             errorBarType = "se",
             exportPath = "",
@@ -33,6 +34,11 @@ freqplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
             private$..annotationsJson <- jmvcore::OptionString$new(
                 "annotationsJson",
                 annotationsJson,
+                default="",
+                hidden=TRUE)
+            private$..chartSnapshot <- jmvcore::OptionString$new(
+                "chartSnapshot",
+                chartSnapshot,
                 default="",
                 hidden=TRUE)
             private$..clientBundleHash <- jmvcore::OptionString$new(
@@ -148,6 +154,7 @@ freqplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
                 hidden=TRUE)
 
             self$.addOption(private$..annotationsJson)
+            self$.addOption(private$..chartSnapshot)
             self$.addOption(private$..clientBundleHash)
             self$.addOption(private$..errorBarType)
             self$.addOption(private$..exportPath)
@@ -167,6 +174,7 @@ freqplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
         }),
     active = list(
         annotationsJson = function() private$..annotationsJson$value,
+        chartSnapshot = function() private$..chartSnapshot$value,
         clientBundleHash = function() private$..clientBundleHash$value,
         errorBarType = function() private$..errorBarType$value,
         exportPath = function() private$..exportPath$value,
@@ -185,6 +193,7 @@ freqplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
         chartSpec = function() private$..chartSpec$value),
     private = list(
         ..annotationsJson = NA,
+        ..chartSnapshot = NA,
         ..clientBundleHash = NA,
         ..errorBarType = NA,
         ..exportPath = NA,
@@ -257,6 +266,7 @@ freqplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Clas
 #' and counts. Group and facet to break the counts down further.
 #' 
 #' @param annotationsJson .
+#' @param chartSnapshot .
 #' @param clientBundleHash .
 #' @param data .
 #' @param errorBarType .
@@ -283,6 +293,7 @@ freqplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Clas
 #' @export
 freqplotbuilder <- function(
     annotationsJson = "",
+    chartSnapshot = "",
     clientBundleHash = "",
     data,
     errorBarType = "se",
@@ -320,6 +331,7 @@ freqplotbuilder <- function(
 
     options <- freqplotbuilderOptions$new(
         annotationsJson = annotationsJson,
+        chartSnapshot = chartSnapshot,
         clientBundleHash = clientBundleHash,
         errorBarType = errorBarType,
         exportPath = exportPath,

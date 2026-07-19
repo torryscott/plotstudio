@@ -531,12 +531,15 @@ distplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6C
                 "histPosition", "graphType", "summaryFunc", "errorBarType",
                 "showDataPoints", "exportRequest", "exportPath", "clientBundleHash",
                 "paletteLibrary", "styleLibrary", "styleStamp",
-                "annotationsJson", "chartSpec"
+                "annotationsJson", "chartSnapshot", "chartSpec"
             )
             spec_keys <- vapply(.distplotbuilderSpecTable, function(r) r$opt,
                                 character(1))
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = bars,
                 graph_type = self$options$graphType,
                 graph_type_choices = list( list(name = "histogram", label = "Histogram"), list(name = "density", label = "Density"), list(name = "histdensity", label = "Hist+Density"), list(name = "box", label = "Box"), list(name = "violin", label = "Violin"), list(name = "raincloud", label = "Raincloud"), list(name = "qq", label = "Q-Q"), list(name = "ecdf", label = "ECDF") ),

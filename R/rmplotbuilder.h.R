@@ -9,6 +9,7 @@ rmplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
             annotationsJson = "",
             betweenVar = NULL,
             bs = NULL,
+            chartSnapshot = "",
             clientBundleHash = "",
             connectSubjects = FALSE,
             displayRoles = "",
@@ -55,6 +56,11 @@ rmplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
                     "ordinal"),
                 permitted=list(
                     "factor"))
+            private$..chartSnapshot <- jmvcore::OptionString$new(
+                "chartSnapshot",
+                chartSnapshot,
+                default="",
+                hidden=TRUE)
             private$..clientBundleHash <- jmvcore::OptionString$new(
                 "clientBundleHash",
                 clientBundleHash,
@@ -190,6 +196,7 @@ rmplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
             self$.addOption(private$..annotationsJson)
             self$.addOption(private$..betweenVar)
             self$.addOption(private$..bs)
+            self$.addOption(private$..chartSnapshot)
             self$.addOption(private$..clientBundleHash)
             self$.addOption(private$..connectSubjects)
             self$.addOption(private$..displayRoles)
@@ -212,6 +219,7 @@ rmplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
         annotationsJson = function() private$..annotationsJson$value,
         betweenVar = function() private$..betweenVar$value,
         bs = function() private$..bs$value,
+        chartSnapshot = function() private$..chartSnapshot$value,
         clientBundleHash = function() private$..clientBundleHash$value,
         connectSubjects = function() private$..connectSubjects$value,
         displayRoles = function() private$..displayRoles$value,
@@ -233,6 +241,7 @@ rmplotbuilderOptions <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Cla
         ..annotationsJson = NA,
         ..betweenVar = NA,
         ..bs = NA,
+        ..chartSnapshot = NA,
         ..clientBundleHash = NA,
         ..connectSubjects = NA,
         ..displayRoles = NA,
@@ -310,6 +319,7 @@ rmplotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class(
 #' @param annotationsJson .
 #' @param betweenVar .
 #' @param bs .
+#' @param chartSnapshot .
 #' @param clientBundleHash .
 #' @param connectSubjects .
 #' @param data .
@@ -339,6 +349,7 @@ rmplotbuilder <- function(
     annotationsJson = "",
     betweenVar,
     bs,
+    chartSnapshot = "",
     clientBundleHash = "",
     connectSubjects = FALSE,
     data,
@@ -378,6 +389,7 @@ rmplotbuilder <- function(
         annotationsJson = annotationsJson,
         betweenVar = betweenVar,
         bs = bs,
+        chartSnapshot = chartSnapshot,
         clientBundleHash = clientBundleHash,
         connectSubjects = connectSubjects,
         displayRoles = displayRoles,

@@ -44,6 +44,12 @@ options:
       permitted:
         - factor
 
+    - name: chartSnapshot
+      title: Static chart snapshot (internal)
+      type: String
+      default: ''
+      hidden: true
+
     - name: clientBundleHash
       title: Client bundle hash (internal)
       type: String

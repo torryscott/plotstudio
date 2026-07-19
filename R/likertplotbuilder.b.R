@@ -314,12 +314,15 @@ likertplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R
             spec_real_keys <- list(
                 "data", "items", "graphType", "likertCiLevel",
                 "exportRequest", "exportPath", "clientBundleHash",
-                "styleLibrary", "styleStamp", "annotationsJson", "chartSpec"
+                "styleLibrary", "styleStamp", "annotationsJson", "chartSnapshot", "chartSpec"
             )
             spec_keys <- vapply(.likertplotbuilderSpecTable, function(r) r$opt,
                                 character(1))
 
             fixed_args <- list(
+                # Static-snapshot fallback: raw pass-through of the JS-committed
+                # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
+                chart_snapshot = self$options$chartSnapshot,
                 bars = list(),
                 graph_type = gtype_out,
                 graph_type_choices = gchoices,
