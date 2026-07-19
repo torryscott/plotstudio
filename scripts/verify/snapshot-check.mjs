@@ -260,6 +260,59 @@ const nativeState = () => {
     await ctx.close();
 }
 
+// ---- 8. export-clean chrome idle: chrome hides when the pointer
+//      leaves the host (what jamovi's exporter then serializes is the
+//      chart alone), returns instantly on hover; the skip-link label
+//      lives in an attribute, never a text node. Real mouse moves -
+//      mouseenter/leave don't fire synthetically.
+{
+    const { ctx, page } = await freshPage('window.__gb2_chromeIdleMs = 400;');
+    await page.goto('file://' + path.join(OUT, 'snap-inline.html'));
+    await page.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0,
+        null, { timeout: 30000 });
+    const box = await page.evaluate(() => {
+        const h = document.querySelector('.graphbuilder2-host');
+        const r = h.getBoundingClientRect();
+        return { cx: r.left + r.width / 2, cy: r.top + Math.min(r.height / 2, 200), below: r.bottom + 120 };
+    });
+    await page.setViewportSize({ width: 1000, height: Math.max(900, box.below + 200) });
+    await page.mouse.move(box.cx, box.cy);
+    await page.waitForTimeout(150);
+    let st = await page.evaluate(() => ({
+        idle: document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
+        chromeTagged: document.querySelectorAll('[data-gb2-chrome]').length,
+    }));
+    expect('chrome-idle: chrome tagged at render', st.chromeTagged > 0);
+    expect('chrome-idle: NOT idle while hovered', !st.idle);
+    await page.mouse.move(box.cx, box.below);   // leave the host
+    await page.waitForFunction(() =>
+        document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
+        null, { timeout: 5000 });
+    st = await page.evaluate(() => {
+        const chrome = [...document.querySelectorAll('[data-gb2-chrome]')];
+        const chart = document.querySelector('svg[data-role=gb2-chart-svg]');
+        return {
+            allHidden: chrome.every(el => getComputedStyle(el).display === 'none'),
+            chartShown: !!(chart && chart.getClientRects().length > 0),
+        };
+    });
+    expect('chrome-idle: idle hides every chrome element', st.allHidden);
+    expect('chrome-idle: the chart itself stays visible', st.chartShown);
+    await page.mouse.move(box.cx, box.cy);      // hover back
+    await page.waitForTimeout(200);
+    const back = await page.evaluate(() =>
+        !document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'));
+    expect('chrome-idle: chrome returns instantly on hover', back);
+    const skip = await page.evaluate(() => {
+        const b = document.querySelector('button[data-role=gb2-skip-chart]');
+        return b ? { text: (b.textContent || '').trim(), aria: b.getAttribute('aria-label') || '' } : null;
+    });
+    expect('chrome-idle: skip-link label is attribute-only (export-invisible)',
+           skip !== null && skip.text === '' && skip.aria === 'Skip to chart');
+    await ctx.close();
+}
+
 await browser.close();
 console.log(fails === 0 ? 'snapshot-check: ALL OK' : `snapshot-check: ${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
