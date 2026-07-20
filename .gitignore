@@ -101,7 +101,7 @@ docs/diagrams/
 dist/
 
 # personal dev docs -- kept locally, not distributed publicly
-/LAUNCH-QA-CHECKLIST.html
+/LAUNCH-QA-CHECKLIST*.html
 /PLOT_STUDIO_BACKLOG.md
 /docs/tab-mapping-spec.md
 

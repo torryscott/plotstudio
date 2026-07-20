@@ -2393,13 +2393,6 @@ graphbuilder2_html <- function(bars,
         '        lines.push("Client cache:    " + (_dbgStored ? "bundle stored (" + Math.round(_dbgStored.length / 1024) + " KB)" : "bundle NOT stored")\n',
         '            + (_dbgEB ? " / evalBlocked SET (eval banned - permanent inline)" : ""));\n',
         '        if (window.__gb2_bundleStoreDiag) lines.push("Last store:      " + window.__gb2_bundleStoreDiag);\n',
-        # Copy diagnostics (Jul 2026, the no-toast field bug): whether a
-        # getcontent request ever REACHED this document, which address/
-        # level it carried, and what the watchdog did about it - the
-        # one-screenshot answer to "which side is the copy dying on".
-        '        try { if (window.__gb2_copyDiag) lines.push("Copy diag:       " + window.__gb2_copyDiag); } catch (_eCd) {}\n',
-        '        try { if (window.__gb2_copyLog && window.__gb2_copyLog.length) lines.push("Copy requests:   " + window.__gb2_copyLog.slice(-3).join(" | ")); } catch (_eCl) {}\n',
-        '        try { if (!window.__gb2_copyLog || !window.__gb2_copyLog.length) lines.push("Copy requests:   none reached this document"); } catch (_eCn) {}\n',
         '        try {\n',
         '          var _dbgTot = 0;\n',
         '          for (var _dbgI = 0; _dbgI < window.localStorage.length; _dbgI++) {\n',
@@ -2410,6 +2403,16 @@ graphbuilder2_html <- function(bars,
         '        } catch (_eTot) {}\n',
         '      }\n',
         '    } catch (_eLs) {}\n',
+        # Copy diagnostics (Jul 2026, the no-toast field bug): whether a
+        # getcontent request ever REACHED this document, which address/
+        # level it carried, and what the watchdog did about it - the
+        # one-screenshot answer to "which side is the copy dying on".
+        # UNCONDITIONAL on purpose: these lines used to sit inside the
+        # bundle_hash client-cache block, so any md5-unknown delivery
+        # silently dropped the one diagnostic the overlay exists for.
+        '    try { if (window.__gb2_copyDiag) lines.push("Copy diag:       " + window.__gb2_copyDiag); } catch (_eCd) {}\n',
+        '    try { if (window.__gb2_copyLog && window.__gb2_copyLog.length) lines.push("Copy requests:   " + window.__gb2_copyLog.slice(-3).join(" | ")); } catch (_eCl) {}\n',
+        '    try { if (!window.__gb2_copyLog || !window.__gb2_copyLog.length) lines.push("Copy requests:   none reached this document"); } catch (_eCn) {}\n',
         '    try { if (__gb2_r_timing.t_run_entry_epoch > 0) lines.push("run entry->now:  " + (Math.round((Date.now() / 1000 - __gb2_r_timing.t_run_entry_epoch) * 1000) / 1000) + " s (full R + transport)"); } catch (_eGap2) {}\n',
         # The decisive perceived-latency line: jamovi posts the panel
         # options to this window the INSTANT the left panel changes, so
