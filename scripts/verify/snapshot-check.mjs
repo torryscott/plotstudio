@@ -444,6 +444,54 @@ const nativeState = () => {
     await ctx.close();
 }
 
+// ---- 10. getcontent watchdog: jamovi's copy pipeline hanging (their
+//      rasterizer has no onerror) must not strand the copy - if no
+//      reply lands, OUR reply completes it with a real PNG. Harness
+//      page = the "main window"; iframe = the results page.
+{
+    const { writeFileSync } = await import('node:fs');
+    const harness = `<!doctype html><meta charset="utf-8">
+<iframe id="f" src="snap-inline.html" style="width:1000px;height:800px"></iframe>
+<script>
+window.__replies = [];
+window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'getcontent') window.__replies.push(e.data.data);
+});
+window.__ask = function () {
+    document.getElementById('f').contentWindow.postMessage(
+        { type: 'getcontent', data: { address: ['widget'], options: {} } }, '*');
+};
+</script>`;
+    writeFileSync(path.join(OUT, 'watchdog-harness.html'), harness);
+    const ctx = await browser.newContext();
+    await ctx.addInitScript('window.__gb2_watchdogMs = 800;');
+    const page = await ctx.newPage();
+    await page.goto('file://' + path.join(OUT, 'watchdog-harness.html'));
+    const frame = page.frames().find(f => f.url().includes('snap-inline'));
+    await frame.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0, null, { timeout: 30000 });
+    await page.evaluate(() => window.__ask());
+    await page.waitForFunction(() => window.__replies.length > 0, null, { timeout: 15000 });
+    const reply = await page.evaluate(() => {
+        const r = window.__replies[0];
+        return {
+            addr: JSON.stringify(r.address),
+            hasImage: !!(r.content && (r.content.image || '').startsWith('data:image/png;base64,')),
+            imgLen: r.content && r.content.image ? r.content.image.length : 0,
+            htmlHasImg: !!(r.content && (r.content.html || '').includes('<img src="data:image/png')),
+        };
+    });
+    expect('watchdog: rescue reply posted with the request address',
+           reply.addr === '["widget"]');
+    expect('watchdog: reply carries a real PNG (' + reply.imgLen + ' chars)',
+           reply.hasImage && reply.imgLen > 10000);
+    expect('watchdog: html flavor carries the embedded image', reply.htmlHasImg);
+    const diag = await frame.evaluate(() => window.__gb2_copyDiag || '');
+    expect('watchdog: diag records the rescue (' + diag + ')',
+           diag === 'watchdog reply posted');
+    await ctx.close();
+}
+
 await browser.close();
 console.log(fails === 0 ? 'snapshot-check: ALL OK' : `snapshot-check: ${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
