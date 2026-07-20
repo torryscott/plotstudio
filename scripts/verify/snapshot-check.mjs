@@ -458,20 +458,26 @@ window.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'getcontent') window.__replies.push(e.data.data);
 });
 window.__ask = function () {
+    // the menu-copy fingerprint: jmvrefs exclude -> the FAST rescue path
     document.getElementById('f').contentWindow.postMessage(
-        { type: 'getcontent', data: { address: ['widget'], options: {} } }, '*');
+        { type: 'getcontent', data: { address: ['widget'],
+          options: { exclude: ['.jmvrefs', 'jmv-reference-numbers'], images: 'absolute' } } }, '*');
 };
 </script>`;
     writeFileSync(path.join(OUT, 'watchdog-harness.html'), harness);
     const ctx = await browser.newContext();
-    await ctx.addInitScript('window.__gb2_watchdogMs = 800;');
+    // NO watchdogMs override: assert the real fast-path timing
     const page = await ctx.newPage();
     await page.goto('file://' + path.join(OUT, 'watchdog-harness.html'));
     const frame = page.frames().find(f => f.url().includes('snap-inline'));
     await frame.waitForFunction(() =>
         document.querySelectorAll('svg [data-bar-cat]').length > 0, null, { timeout: 30000 });
+    const t0 = Date.now();
     await page.evaluate(() => window.__ask());
     await page.waitForFunction(() => window.__replies.length > 0, null, { timeout: 15000 });
+    const rescueMs = Date.now() - t0;
+    expect('watchdog: copy-fingerprinted rescue is FAST (' + rescueMs + ' ms)',
+           rescueMs < 3500);
     const reply = await page.evaluate(() => {
         const r = window.__replies[0];
         return {

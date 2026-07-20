@@ -2393,6 +2393,13 @@ graphbuilder2_html <- function(bars,
         '        lines.push("Client cache:    " + (_dbgStored ? "bundle stored (" + Math.round(_dbgStored.length / 1024) + " KB)" : "bundle NOT stored")\n',
         '            + (_dbgEB ? " / evalBlocked SET (eval banned - permanent inline)" : ""));\n',
         '        if (window.__gb2_bundleStoreDiag) lines.push("Last store:      " + window.__gb2_bundleStoreDiag);\n',
+        # Copy diagnostics (Jul 2026, the no-toast field bug): whether a
+        # getcontent request ever REACHED this document, which address/
+        # level it carried, and what the watchdog did about it - the
+        # one-screenshot answer to "which side is the copy dying on".
+        '        try { if (window.__gb2_copyDiag) lines.push("Copy diag:       " + window.__gb2_copyDiag); } catch (_eCd) {}\n',
+        '        try { if (window.__gb2_copyLog && window.__gb2_copyLog.length) lines.push("Copy requests:   " + window.__gb2_copyLog.slice(-3).join(" | ")); } catch (_eCl) {}\n',
+        '        try { if (!window.__gb2_copyLog || !window.__gb2_copyLog.length) lines.push("Copy requests:   none reached this document"); } catch (_eCn) {}\n',
         '        try {\n',
         '          var _dbgTot = 0;\n',
         '          for (var _dbgI = 0; _dbgI < window.localStorage.length; _dbgI++) {\n',
