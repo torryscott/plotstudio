@@ -457,10 +457,12 @@ window.__replies = [];
 window.addEventListener('message', (e) => {
     if (e.data && e.data.type === 'getcontent') window.__replies.push(e.data.data);
 });
-window.__ask = function () {
-    // the menu-copy fingerprint: jmvrefs exclude -> the FAST rescue path
+window.__ask = function (addr) {
+    // the menu-copy fingerprint: jmvrefs exclude -> the FAST rescue path.
+    // addr defaults to the item level; [] is the analysis level (the
+    // post-shift remainder jamovi posts for an analysis-level copy).
     document.getElementById('f').contentWindow.postMessage(
-        { type: 'getcontent', data: { address: ['widget'],
+        { type: 'getcontent', data: { address: (addr || ['widget']),
           options: { exclude: ['.jmvrefs', 'jmv-reference-numbers'], images: 'absolute' } } }, '*');
 };
 </script>`;
@@ -494,7 +496,45 @@ window.__ask = function () {
     expect('watchdog: html flavor carries the embedded image', reply.htmlHasImg);
     const diag = await frame.evaluate(() => window.__gb2_copyDiag || '');
     expect('watchdog: diag records the rescue (' + diag + ')',
-           diag === 'watchdog reply posted');
+           /^reply posted/.test(diag));
+
+    // Stage trail: every step of the observed copy is on record, in
+    // order, so a field failure names its exact dying stage.
+    const stages = await frame.evaluate(() => (window.__gb2_copyStages || []).join('\n'));
+    for (const s of ['request received ["widget"] (copy)', 'rasterize target',
+                     'svg serialized', 'rescue timer armed 1500 ms',
+                     'svg image loaded', 'canvas encoded', 'reply posted ["widget"]'])
+        expect('watchdog: stage logged - ' + s, stages.includes(s));
+
+    // Live overlay: with the debug overlay ON SCREEN, a new copy
+    // request must rebuild it in place (the static-overlay bug: the
+    // screenshot instruction was invalid because nothing refreshed).
+    await frame.evaluate(() => {
+        window.localStorage.setItem('gb2_debug_timing', '1');
+        window.__gb2_buildDbgOverlay();
+    });
+    const preTxt = await frame.evaluate(() =>
+        document.querySelector('[data-role="gb2-debug"]').textContent);
+    expect('watchdog: overlay shows the stage trail', preTxt.includes('Copy stages:'));
+
+    // Analysis-level address []: truthy (empty array), passes the
+    // guard, rescues, and the live overlay picks the new request up
+    // WITHOUT a re-toggle.
+    await page.evaluate(() => window.__ask([]));
+    await page.waitForFunction(() => window.__replies.length > 1, null, { timeout: 15000 });
+    const reply2 = await page.evaluate(() => {
+        const r = window.__replies[1];
+        return {
+            addr: JSON.stringify(r.address),
+            hasImage: !!(r.content && (r.content.image || '').startsWith('data:image/png;base64,')),
+        };
+    });
+    expect('watchdog: analysis-level [] address rescued too', reply2.addr === '[]' && reply2.hasImage);
+    const postTxt = await frame.evaluate(() =>
+        document.querySelector('[data-role="gb2-debug"]').textContent);
+    expect('watchdog: overlay updated LIVE with the [] request',
+           postTxt.includes('request received [] (copy)') && postTxt.includes('reply posted []'));
+    await frame.evaluate(() => window.localStorage.removeItem('gb2_debug_timing'));
     await ctx.close();
 }
 

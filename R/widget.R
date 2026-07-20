@@ -2308,12 +2308,21 @@ graphbuilder2_html <- function(bars,
         '  }\n',
         '  if (!nat.length) return;\n',
         '  var live = !!(typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render);\n',
-        '  for (var j = 0; j < nat.length; j++) nat[j].style.display = live ? "none" : "";\n',
+        # Diagnostics mode (the timing-overlay flag) leaves the native
+        # Image result VISIBLE next to the live chart - the decisive
+        # copy-control experiment: right-click the static copy to get
+        # jamovi's real Image-level menu and its supported copy path.
+        '  var diag = false;\n',
+        '  try { diag = !!(window.localStorage && window.localStorage.getItem("gb2_debug_timing") === "1"); } catch (_eDgF) {}\n',
+        '  for (var j = 0; j < nat.length; j++) nat[j].style.display = (live && !diag) ? "none" : "";\n',
         '  if (!live) {\n',
         '    var __nsSn = document.getElementById(__gb2_id + "-snap");\n',
         '    if (__nsSn) { var __nsSi = __nsSn.querySelector("img"); if (__nsSi) __nsSi.style.display = "none"; }\n',
         '  }\n',
         '} catch (_eNs) {} };\n',
+        # Exposed so the Diagnostics checkbox can flip the static copy
+        # in and out immediately (no wait for the next delivery).
+        'try { window.__gb2_snapNativeSync = __gb2_snapNativeSync; } catch (_eNsX) {}\n',
         'try { __gb2_snapNativeSync(); setTimeout(__gb2_snapNativeSync, 400); setTimeout(__gb2_snapNativeSync, 1500); } catch (_eNsA) {}\n',
         'var __gb2_renderErr = null, __gb2_renderExc = null;\n',
         'try {\n',
@@ -2413,6 +2422,12 @@ graphbuilder2_html <- function(bars,
         '    try { if (window.__gb2_copyDiag) lines.push("Copy diag:       " + window.__gb2_copyDiag); } catch (_eCd) {}\n',
         '    try { if (window.__gb2_copyLog && window.__gb2_copyLog.length) lines.push("Copy requests:   " + window.__gb2_copyLog.slice(-3).join(" | ")); } catch (_eCl) {}\n',
         '    try { if (!window.__gb2_copyLog || !window.__gb2_copyLog.length) lines.push("Copy requests:   none reached this document"); } catch (_eCn) {}\n',
+        # Per-stage trail of every observed copy (written live by the
+        # watchdog's __gb2_cwStage, which also rebuilds this overlay on
+        # every stage - the overlay is no longer a stale snapshot).
+        '    try { if (window.__gb2_copyStages && window.__gb2_copyStages.length) { lines.push("Copy stages:"); var _cst = window.__gb2_copyStages.slice(-10); for (var _csi = 0; _csi < _cst.length; _csi++) lines.push("  " + _cst[_csi]); } } catch (_eCst) {}\n',
+        '    try { if (window.__gb2_lastCopyPath) lines.push("Cmd+C path:      " + window.__gb2_lastCopyPath); } catch (_eKp) {}\n',
+        '    try { if (window.localStorage && window.localStorage.getItem("gb2_debug_timing") === "1" && document.querySelector("jmv-results-image")) lines.push("Static copy:     left visible (diagnostics mode - right-click IT to test the native Image menu)"); } catch (_eScv) {}\n',
         '    try { if (__gb2_r_timing.t_run_entry_epoch > 0) lines.push("run entry->now:  " + (Math.round((Date.now() / 1000 - __gb2_r_timing.t_run_entry_epoch) * 1000) / 1000) + " s (full R + transport)"); } catch (_eGap2) {}\n',
         # The decisive perceived-latency line: jamovi posts the panel
         # options to this window the INSTANT the left panel changes, so
