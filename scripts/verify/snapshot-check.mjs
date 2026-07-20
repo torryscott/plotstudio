@@ -260,71 +260,49 @@ const nativeState = () => {
     await ctx.close();
 }
 
-// ---- 8. export-clean chrome idle: chrome hides when the pointer
-//      leaves the host (what jamovi's exporter then serializes is the
-//      chart alone), returns instantly on hover; the skip-link label
-//      lives in an attribute, never a text node. Real mouse moves -
-//      mouseenter/leave don't fire synthetically.
+// ---- 8. export-clean chrome: every chrome element carries jamovi's
+//      .ignore-html serializer opt-out (THAT is what keeps copies and
+//      exports chart-only), and chrome STAYS VISIBLE on screen at all
+//      times - the old hide-on-blur behavior is retired (Torry: the
+//      top bar appearing/disappearing read as broken; hiding never
+//      served exports once the tagging existed).
 {
-    const { ctx, page } = await freshPage('window.__gb2_chromeIdleMs = 400;');
+    const { ctx, page } = await freshPage('');
     await page.goto('file://' + path.join(OUT, 'snap-inline.html'));
     await page.waitForFunction(() =>
         document.querySelectorAll('svg [data-bar-cat]').length > 0,
         null, { timeout: 30000 });
-    const box = await page.evaluate(() => {
-        const h = document.querySelector('.graphbuilder2-host');
-        const r = h.getBoundingClientRect();
-        return { cx: r.left + r.width / 2, cy: r.top + Math.min(r.height / 2, 200), below: r.bottom + 120 };
-    });
-    await page.setViewportSize({ width: 1000, height: Math.max(900, box.below + 200) });
-    await page.mouse.move(box.cx, box.cy);
-    await page.waitForTimeout(150);
     let st = await page.evaluate(() => ({
-        idle: document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
         chromeTagged: document.querySelectorAll('[data-gb2-chrome]').length,
+        allOptedOut: [...document.querySelectorAll('[data-gb2-chrome]')]
+            .every(el => el.classList.contains('ignore-html')),
     }));
-    expect('chrome-idle: chrome tagged at render', st.chromeTagged > 0);
-    expect('chrome-idle: NOT idle while hovered', !st.idle);
-    // Torry's rule (the v2 semantics): pointer away but document still
-    // FOCUSED -> chrome must STAY (the v1 pointer-driven hide read as
-    // broken while the analysis was selected).
-    await page.mouse.move(box.cx, box.below);   // leave the host, focus kept
-    await page.waitForTimeout(900);             // > the 400 ms probe delay
-    st = await page.evaluate(() => ({
-        idle: document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
-    }));
-    expect('chrome-idle: pointer away + still focused -> chrome STAYS', !st.idle);
-    // Real hide trigger: focus leaves the document (jamovi menus, the
-    // spreadsheet). Headless pages always report hasFocus() true, so
-    // the probe uses the documented force hook + the blur event.
-    await page.evaluate(() => {
-        window.__gb2_ciForceBlur = true;
+    expect('chrome: tagged at render', st.chromeTagged > 0);
+    expect('chrome: every tagged element carries ignore-html', st.allOptedOut);
+    // Blur must change NOTHING on screen (the retired behavior hid
+    // chrome 1.2 s after focus left the document). Some chrome is
+    // legitimately display:none at rest (collapsed panels, closed
+    // menus) - the assertion is that the hidden SET does not grow.
+    st = await page.evaluate(async () => {
+        const hiddenSet = () => [...document.querySelectorAll('[data-gb2-chrome]')]
+            .filter(el => getComputedStyle(el).display === 'none').length;
+        const before = hiddenSet();
         window.dispatchEvent(new Event('blur'));
-    });
-    await page.waitForFunction(() =>
-        document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
-        null, { timeout: 5000 });
-    st = await page.evaluate(() => {
-        const chrome = [...document.querySelectorAll('[data-gb2-chrome]')];
+        await new Promise(r => setTimeout(r, 1600));
         const chart = document.querySelector('svg[data-role=gb2-chart-svg]');
         return {
-            allHidden: chrome.every(el => getComputedStyle(el).display === 'none'),
+            idleClass: document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
+            grew: hiddenSet() > before,
             chartShown: !!(chart && chart.getClientRects().length > 0),
         };
     });
-    expect('chrome-idle: blur hides every chrome element', st.allHidden);
-    expect('chrome-idle: the chart itself stays visible', st.chartShown);
-    const back = await page.evaluate(() => {
-        window.__gb2_ciForceBlur = false;
-        window.dispatchEvent(new Event('focus'));
-        return !document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle');
-    });
-    expect('chrome-idle: chrome returns instantly on refocus', back);
+    expect('chrome: blur never hides it (behavior retired)', !st.idleClass && !st.grew);
+    expect('chrome: the chart stays visible', st.chartShown);
     const skip = await page.evaluate(() => {
         const b = document.querySelector('button[data-role=gb2-skip-chart]');
         return b ? { text: (b.textContent || '').trim(), aria: b.getAttribute('aria-label') || '' } : null;
     });
-    expect('chrome-idle: skip-link label is attribute-only (export-invisible)',
+    expect('chrome: skip-link label is attribute-only (export-invisible)',
            skip !== null && skip.text === '' && skip.aria === 'Skip to chart');
     await ctx.close();
 }
