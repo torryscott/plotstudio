@@ -588,6 +588,59 @@ window.__gb2_snapDelay = 300;`;
     expect('swap: stages record ON + restored',
            stages.includes('copy-clean swap ON') && stages.includes('copy-clean swap restored'));
 
+    // Delivery-wipe regression (Torry's "text again": jamovi deliveries
+    // innerHTML-rebuild the item DOM, destroying the div; the window
+    // cache survives): remove the div, copy again - the swap must
+    // rebuild it synchronously from the cache and still apply.
+    const healed = await page.evaluate(() => {
+        const dv0 = document.querySelector('[data-role="gb2-copy-div"]');
+        dv0.parentNode.removeChild(dv0);
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'getcontent', data: { address: [],
+                options: { exclude: ['.jmvrefs'], images: 'absolute', docType: true } } },
+            source: null,
+        }));
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return {
+            divBack: !!dv,
+            divShown: dv ? dv.style.display === 'block' : false,
+            hostOptedOut: host.classList.contains('ignore-html'),
+            bgIsPng: dv ? /url\("data:image\/png/.test(dv.style.cssText) : false,
+        };
+    });
+    expect('swap: wiped div rebuilt from cache + swap applied',
+           healed.divBack && healed.divShown && healed.hostOptedOut && healed.bgIsPng);
+    await page.waitForFunction(() =>
+        !document.querySelector('.graphbuilder2-host').classList.contains('ignore-html'),
+        null, { timeout: 5000 });
+    const stagesHeal = await page.evaluate(() => (window.__gb2_copyStages || []).join('\n'));
+    expect('swap: rebuild stage logged',
+           stagesHeal.includes('copy div rebuilt from cache'));
+
+    // Item-level copy (non-empty address, e.g. the static Image result
+    // or our widget item) must make NO DOM changes: hiding the static
+    // copy mid-copy blanked jamovi's own rasterization of it (Torry's
+    // "image level pastes nothing").
+    const itemLevel = await page.evaluate(() => {
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'getcontent', data: { address: ['snapshotImage'],
+                options: { exclude: ['.jmvrefs'], images: 'absolute', docType: true } } },
+            source: null,
+        }));
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return {
+            hostOptedOut: host.classList.contains('ignore-html'),
+            divShown: dv.style.display === 'block',
+        };
+    });
+    expect('swap: item-level copy makes NO DOM changes',
+           !itemLevel.hostOptedOut && !itemLevel.divShown);
+    const stagesItem = await page.evaluate(() => (window.__gb2_copyStages || []).join('\n'));
+    expect('swap: item-level no-swap stage logged',
+           stagesItem.includes('item-level copy - no swap'));
+
     // Negative: same request WITHOUT docType (a per-item export) must
     // not swap - exports keep the vector svg.
     const exported = await page.evaluate(() => {
