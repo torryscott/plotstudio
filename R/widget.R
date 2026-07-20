@@ -2454,6 +2454,11 @@ graphbuilder2_html <- function(bars,
         '    try { if (window.__gb2_deliveryCount) lines.push("Delivery:        #" + window.__gb2_deliveryCount + " this session"); } catch (_eDc2) {}\n',
         '    var dbg = document.createElement("div");\n',
         '    dbg.setAttribute("data-role", "gb2-debug");\n',
+        # jamovi's serializer opt-out: the overlay is rebuilt fresh on
+        # every stage update, AFTER the render-time chrome sweep ran, so
+        # it must class itself - without this the whole diagnostic text
+        # rode copies and exports (Torry's PowerPoint paste, Jul 2026).
+        '    dbg.className = "ignore-html";\n',
         '    dbg.style.cssText = "position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.95);border:1px solid #999;border-radius:4px;padding:6px 8px;font:11px/1.4 monospace;color:#222;box-shadow:0 2px 6px rgba(0,0,0,0.12);z-index:9999;max-width:340px;white-space:pre;";\n',
         '    var pre = document.createElement("div");\n',
         '    pre.style.whiteSpace = "pre";\n',

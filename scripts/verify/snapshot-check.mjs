@@ -463,7 +463,8 @@ window.__ask = function (addr) {
     // post-shift remainder jamovi posts for an analysis-level copy).
     document.getElementById('f').contentWindow.postMessage(
         { type: 'getcontent', data: { address: (addr || ['widget']),
-          options: { exclude: ['.jmvrefs', 'jmv-reference-numbers'], images: 'absolute' } } }, '*');
+          options: { exclude: ['.jmvrefs', 'jmv-reference-numbers'], images: 'absolute',
+                     margin: '24', docType: true } } }, '*');
 };
 </script>`;
     writeFileSync(path.join(OUT, 'watchdog-harness.html'), harness);
@@ -535,6 +536,99 @@ window.__ask = function (addr) {
     expect('watchdog: overlay updated LIVE with the [] request',
            postTxt.includes('request received [] (copy)') && postTxt.includes('reply posted []'));
     await frame.evaluate(() => window.localStorage.removeItem('gb2_debug_timing'));
+    await ctx.close();
+}
+
+// ---- 11. copy-clean swap: during a COPY serialization window the
+//      widget presents as one picture - host opted out (.ignore-html),
+//      invisible png background-image div included (jamovi's
+//      _htmlifyDiv contract: copies only width/height, so opacity:0
+//      never rides). Exports (no docType) must NOT swap - they keep
+//      the vector svg.
+{
+    // The scheduler that builds the png cache gates on hasSetOption
+    // (read-only pages never snapshot), so mock it like cases 4+5 do.
+    const MOCK = `window.setOption = function () {};
+window.__gb2_snapDelay = 300;`;
+    const { ctx, page } = await freshPage(MOCK);
+    await page.goto('file://' + path.join(OUT, 'snap-inline.html'));
+    await page.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0, null, { timeout: 30000 });
+
+    // The png cache rides the snapshot debounce + an async raster -
+    // wait for the div to exist.
+    await page.waitForFunction(() =>
+        !!document.querySelector('[data-role="gb2-copy-div"]'), null, { timeout: 15000 });
+
+    const divState = await page.evaluate(() => {
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        const cs = getComputedStyle(dv);
+        return {
+            display: dv.style.display,
+            opacity: cs.opacity,
+            position: cs.position,
+            bgIsPng: /url\("data:image\/png/.test(dv.style.cssText),
+            w: parseFloat(dv.style.width) || 0,
+            h: parseFloat(dv.style.height) || 0,
+        };
+    });
+    expect('swap: png div cached, hidden by default', divState.display === 'none');
+    expect('swap: div invisible-by-construction (opacity 0, absolute)',
+           divState.position === 'absolute');
+    expect('swap: div carries a real png background ' + divState.w + 'x' + divState.h,
+           divState.bgIsPng && divState.w > 100 && divState.h > 100);
+
+    // Local synthetic dispatch runs the listener SYNCHRONOUSLY - the
+    // swap state is assertable the moment dispatchEvent returns (the
+    // real serializer walk starts in a microtask after this).
+    const swapped = await page.evaluate(() => {
+        window.__gb2_swapMs = 150;
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'getcontent', data: { address: [],
+                options: { exclude: ['.jmvrefs'], images: 'absolute', docType: true } } },
+            source: null,
+        }));
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return {
+            hostOptedOut: host.classList.contains('ignore-html'),
+            divShown: dv.style.display === 'block',
+            opacity: getComputedStyle(dv).opacity,
+        };
+    });
+    expect('swap: host opted out during the copy window', swapped.hostOptedOut);
+    expect('swap: png div included during the copy window', swapped.divShown);
+    expect('swap: shown div still invisible on screen (opacity 0)', swapped.opacity === '0');
+
+    await page.waitForFunction(() => {
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return !host.classList.contains('ignore-html') && dv.style.display === 'none';
+    }, null, { timeout: 5000 });
+    expect('swap: restored after the window', true);
+    const stages = await page.evaluate(() => (window.__gb2_copyStages || []).join('\n'));
+    expect('swap: stages record ON + restored',
+           stages.includes('copy-clean swap ON') && stages.includes('copy-clean swap restored'));
+
+    // Negative: same request WITHOUT docType (a per-item export) must
+    // not swap - exports keep the vector svg.
+    const exported = await page.evaluate(() => {
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'getcontent', data: { address: ['widget'],
+                options: { exclude: ['.jmvrefs'], images: 'inline' } } },
+            source: null,
+        }));
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return {
+            hostOptedOut: host.classList.contains('ignore-html'),
+            divShown: dv.style.display === 'block',
+        };
+    });
+    expect('swap: export request (no docType) does NOT swap',
+           !exported.hostOptedOut && !exported.divShown);
+    const stages2 = await page.evaluate(() => (window.__gb2_copyStages || []).join('\n'));
+    expect('swap: export logged as copy/save', stages2.includes('(copy/save)'));
     await ctx.close();
 }
 
