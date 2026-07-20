@@ -663,6 +663,31 @@ window.__gb2_snapDelay = 300;`;
     await ctx.close();
 }
 
+// ---- 12. fast copy-readiness: the png stand-in rides its OWN ~300ms
+//      timer (not the 4s option-commit debounce it used to share), and
+//      builds WITHOUT window.setOption - read-only pages copy clean
+//      too. No mock here on purpose: the snapshot scheduler is
+//      hasSetOption-gated, so the div's existence in this context
+//      proves the fast path built it.
+{
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto('file://' + path.join(OUT, 'snap-inline.html'));
+    await page.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0, null, { timeout: 30000 });
+    const t0 = Date.now();
+    await page.waitForFunction(() =>
+        !!document.querySelector('[data-role="gb2-copy-div"]'), null, { timeout: 3500 });
+    const readyMs = Date.now() - t0;
+    expect('fast-png: stand-in ready without setOption, in ' + readyMs + ' ms (< 3.5 s)', true);
+    const ok = await page.evaluate(() => {
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return /url\("data:image\/png/.test(dv.style.cssText) && dv.style.display === 'none';
+    });
+    expect('fast-png: real png, hidden at rest', ok);
+    await ctx.close();
+}
+
 await browser.close();
 console.log(fails === 0 ? 'snapshot-check: ALL OK' : `snapshot-check: ${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
