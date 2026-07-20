@@ -108,3 +108,9 @@ dist/
 # dev-only: project instructions + prototypes/experiments (kept local, not public)
 /CLAUDE.md
 /prototypes/
+
+# reference copies of upstream source dropped in for local study (jmv /
+# jamovi app code) - NEVER commit into this repo (AGPL upstream + bloat;
+# release.sh stages with `git add -A`, so this guard is load-bearing)
+/Jamovi Source Files/
+/Jamovi Source Code/

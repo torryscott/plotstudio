@@ -360,6 +360,38 @@ const nativeState = () => {
     });
     expect('copy: patch installed + serializer exposed',
            wired.patched && wired.serializer);
+    // jamovi-native flavor route: chrome opted out via jamovi's OWN
+    // .ignore-html mechanism, and the item wears the image classes so
+    // getcontent picks the image/png flavor for right-click Copy.
+    // The impersonation needs the results-element ANCESTOR at render
+    // time; the reparent above happened after render, so re-render.
+    await page.evaluate(() => {
+        const host = document.querySelector('.graphbuilder2-host');
+        const marker = 'var __gb2_payload = ';
+        const script = [...document.querySelectorAll('script')]
+            .map(el => el.textContent || '').find(t => t.includes(marker)) || '';
+        const start = script.indexOf(marker) + marker.length;
+        const end = script.indexOf(';\nvar __gb2_id =', start);
+        window.__gb2_lastRenderedHash = null; // defeat the hash-skip
+        window.GraphBuilder2.render(host.id, JSON.parse(script.slice(start, end)));
+    });
+    await page.waitForTimeout(300);
+    const native = await page.evaluate(() => {
+        const chrome = [...document.querySelectorAll('[data-gb2-chrome]')];
+        const svgEl = document.querySelector('svg[data-role=gb2-chart-svg]');
+        let card = svgEl;
+        const host = document.querySelector('.graphbuilder2-host');
+        while (card && card.parentElement && card.parentElement !== host) card = card.parentElement;
+        return {
+            allOptedOut: chrome.length > 0 && chrome.every(el => el.classList.contains('ignore-html')),
+            cardMarked: !!(card && card !== svgEl && card.classList.contains('jmv-results-image-image')),
+            chartClean: !svgEl.classList.contains('ignore-html'),
+        };
+    });
+    expect('copy: every chrome element carries jamovi\'s ignore-html opt-out',
+           native.allOptedOut);
+    expect('copy: chart card wears the image-flavor class', native.cardMarked);
+    expect('copy: the chart itself is NOT opted out', native.chartClean);
     await page.evaluate(() => {
         document.querySelector('jmv-results-html').copyContentToClipboard();
     });
