@@ -249,6 +249,10 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
 
             if (is.null(data) || nrow(data) == 0 ||
                 gb_family_is_missing(xvar) || gb_family_is_missing(yvar)) {
+                # No chart -> any persisted snapshot is stale; hide the
+                # native static copy alongside the message.
+                tryCatch(self$results$snapshotImage$setVisible(FALSE),
+                         error = function(e) NULL)
                 self$results$widget$setContent(gb2_engine_boot_html(
                     private$.placeholder(), self$options$clientBundleHash))
                 return()
@@ -517,6 +521,10 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
                 }
             )
 
+            # Native static copy: feed the persisted snapshot into
+            # jamovi's own Image result (native export, native copy
+            # menu, module-less display).
+            private$.updateSnapshotImage()
             self$results$widget$setContent(html)
         },
 
@@ -529,6 +537,40 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
                 'or into <strong>Panels</strong> to draw one panel per level.',
                 '</div>'
             )
+        },
+
+        .updateSnapshotImage = function() {
+            img <- self$results$snapshotImage
+            snap <- gb_parse_snapshot(self$options$chartSnapshot)
+            if (is.null(snap)) {
+                tryCatch(img$setVisible(FALSE), error = function(e) NULL)
+                return()
+            }
+            tryCatch({
+                dims <- gb_svg_dims(snap$svg)
+                img$setSize(dims$w, dims$h)
+                img$setState(snap$svg)
+                img$setVisible(TRUE)
+            }, error = function(e) NULL)
+        },
+
+        # renderFun for the snapshotImage result: rasterize the persisted
+        # SVG onto jamovi's plot device at 2x for crispness. rsvg ships
+        # with the module (the PDF-export dependency); without it the
+        # image stays empty rather than erroring (FALSE = nothing drawn).
+        .renderSnapshot = function(image, ggtheme, theme, ...) {
+            svg <- image$state
+            if (is.null(svg) || !is.character(svg) || !nzchar(svg))
+                return(FALSE)
+            if (!requireNamespace("rsvg", quietly = TRUE))
+                return(FALSE)
+            tryCatch({
+                px_w <- max(400, round((if (is.numeric(image$width)) image$width else 700) * 2))
+                bmp <- rsvg::rsvg(charToRaw(enc2utf8(svg)), width = px_w)
+                grid::grid.newpage()
+                grid::grid.raster(bmp)
+                TRUE
+            }, error = function(e) FALSE)
         },
 
         # --- Export pipeline ---------------------------------------------

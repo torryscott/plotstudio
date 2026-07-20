@@ -36,14 +36,16 @@ const syntax = spawnSync(process.execPath, ['--check', widgetPath], { encoding: 
 check('Widget JavaScript parses', syntax.status === 0,
     (syntax.stderr || syntax.stdout || '').trim());
 
-// Launch-only chrome and naming: developer instrumentation must stay opt-in,
-// and search/result copy must mirror the current lower-panel vocabulary.
+// Field diagnostics must be REACHABLE (v2.9.9, Torry): the overlay is
+// the no-devtools diagnostics surface, so the Appearance toggle is
+// always present - the old __gb2DeveloperMode gate was dead code that
+// nothing ever set, hiding the toggle in every build.
 const globalInspector = section('function renderInspectorGlobal(body)',
     'function renderInspectorFacet(body, level)');
-check('Render-timing diagnostics require the explicit developer flag',
-    globalInspector.includes('window.__gb2DeveloperMode === true') &&
-    globalInspector.includes('(_gsShowDeveloperDiagnostics') &&
-    count('var _gsShowDeveloperDiagnostics = false;') === 1);
+check('Render-timing diagnostics toggle is always reachable (no dead gate)',
+    !globalInspector.includes('window.__gb2DeveloperMode === true') &&
+    count('var _gsShowDeveloperDiagnostics = true;') === 1 &&
+    globalInspector.includes('data-field="dbg-timing"'));
 check('Facet color actions accurately say they restore the default',
     source.includes('title="Restore the default divider color">Use default color</a>') &&
     source.includes('title="Restore the default accent-line color">Use default color</a>'));

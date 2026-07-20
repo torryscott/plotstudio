@@ -9,6 +9,14 @@ items:
       type: Html
       visible: true
 
+    - name: snapshotImage
+      title: Chart (static copy)
+      type: Image
+      width: 700
+      height: 450
+      renderFun: .renderSnapshot
+      visible: false
+
     - name: exportStatus
       title: Export Status
       type: Html

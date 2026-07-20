@@ -106,6 +106,10 @@ likertplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R
 
             if (is.null(data) || nrow(data) == 0 ||
                 is.null(items) || length(items) < 1) {
+                # No chart -> any persisted snapshot is stale; hide the
+                # native static copy alongside the message.
+                tryCatch(self$results$snapshotImage$setVisible(FALSE),
+                         error = function(e) NULL)
                 self$results$widget$setContent(gb2_engine_boot_html(
                     private$.placeholder(), self$options$clientBundleHash))
                 return()
@@ -154,6 +158,10 @@ likertplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R
                         n_rows_missing, n_rows_total) else ""
 
             if (length(lv_all) < 2) {
+                # No chart -> any persisted snapshot is stale; hide the
+                # native static copy alongside the message.
+                tryCatch(self$results$snapshotImage$setVisible(FALSE),
+                         error = function(e) NULL)
                 self$results$widget$setContent(private$.placeholder(paste0(
                     'The selected items have fewer than 2 distinct response ',
                     'levels - there is nothing to stack.'
@@ -174,6 +182,10 @@ likertplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R
                 nonnum <- items[!vapply(items, function(it)
                     is.numeric(data[[it]]), logical(1))]
                 if (length(nonnum) > 0) {
+                    # No chart -> any persisted snapshot is stale; hide the
+                    # native static copy alongside the message.
+                    tryCatch(self$results$snapshotImage$setVisible(FALSE),
+                             error = function(e) NULL)
                     self$results$widget$setContent(private$.placeholder(paste0(
                         'These items have ', length(lv_all), ' distinct values - ',
                         'Likert items need a small shared response scale ',
@@ -360,6 +372,10 @@ likertplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R
                 }
             )
 
+            # Native static copy: feed the persisted snapshot into
+            # jamovi's own Image result (native export, native copy
+            # menu, module-less display).
+            private$.updateSnapshotImage()
             self$results$widget$setContent(html)
         },
 
@@ -379,6 +395,40 @@ likertplotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R
                 body,
                 '</div>'
             )
+        },
+
+        .updateSnapshotImage = function() {
+            img <- self$results$snapshotImage
+            snap <- gb_parse_snapshot(self$options$chartSnapshot)
+            if (is.null(snap)) {
+                tryCatch(img$setVisible(FALSE), error = function(e) NULL)
+                return()
+            }
+            tryCatch({
+                dims <- gb_svg_dims(snap$svg)
+                img$setSize(dims$w, dims$h)
+                img$setState(snap$svg)
+                img$setVisible(TRUE)
+            }, error = function(e) NULL)
+        },
+
+        # renderFun for the snapshotImage result: rasterize the persisted
+        # SVG onto jamovi's plot device at 2x for crispness. rsvg ships
+        # with the module (the PDF-export dependency); without it the
+        # image stays empty rather than erroring (FALSE = nothing drawn).
+        .renderSnapshot = function(image, ggtheme, theme, ...) {
+            svg <- image$state
+            if (is.null(svg) || !is.character(svg) || !nzchar(svg))
+                return(FALSE)
+            if (!requireNamespace("rsvg", quietly = TRUE))
+                return(FALSE)
+            tryCatch({
+                px_w <- max(400, round((if (is.numeric(image$width)) image$width else 700) * 2))
+                bmp <- rsvg::rsvg(charToRaw(enc2utf8(svg)), width = px_w)
+                grid::grid.newpage()
+                grid::grid.raster(bmp)
+                TRUE
+            }, error = function(e) FALSE)
         },
 
         # --- Export pipeline ---------------------------------------------

@@ -204,6 +204,7 @@ plotbuilderResults <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
     inherit = jmvcore::Group,
     active = list(
         widget = function() private$.items[["widget"]],
+        snapshotImage = function() private$.items[["snapshotImage"]],
         exportStatus = function() private$.items[["exportStatus"]]),
     private = list(),
     public=list(
@@ -217,6 +218,14 @@ plotbuilderResults <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class
                 name="widget",
                 title="Compare Groups",
                 visible=TRUE))
+            self$add(jmvcore::Image$new(
+                options=options,
+                name="snapshotImage",
+                title="Chart (static copy)",
+                width=700,
+                height=450,
+                renderFun=".renderSnapshot",
+                visible=FALSE))
             self$add(jmvcore::Html$new(
                 options=options,
                 name="exportStatus",
@@ -273,6 +282,7 @@ plotbuilderBase <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6Class(
 #' @return A results object containing:
 #' \tabular{llllll}{
 #'   \code{results$widget} \tab \tab \tab \tab \tab a html \cr
+#'   \code{results$snapshotImage} \tab \tab \tab \tab \tab an image \cr
 #'   \code{results$exportStatus} \tab \tab \tab \tab \tab a html \cr
 #' }
 #'
