@@ -386,6 +386,11 @@ const nativeState = () => {
         while (card && card.parentElement && card.parentElement !== host) card = card.parentElement;
         return {
             allOptedOut: chrome.length > 0 && chrome.every(el => el.classList.contains('ignore-html')),
+            // the PowerPoint root cause: outerHTML of a namespace-created
+            // svg omits xmlns, and jamovi's copy rasterizer parses it as
+            // strict XML - graphics vanish, text flattens. The attribute
+            // must be ON the live element.
+            chartHasNs: svgEl.getAttribute('xmlns') === 'http://www.w3.org/2000/svg',
             cardMarked: !!(card && card !== svgEl && card.classList.contains('jmv-results-image-image')),
             itemMarked: !!document.querySelector('jmv-results-html.jmv-results-image'),
             groupMarked: !!document.querySelector('jmv-results-group.jmv-results-image'),
@@ -394,6 +399,8 @@ const nativeState = () => {
     });
     expect('copy: every chrome element carries jamovi\'s ignore-html opt-out',
            native.allOptedOut);
+    expect('copy: chart svg carries explicit xmlns (the rasterizer root cause)',
+           native.chartHasNs);
     expect('copy: chart card wears the image-flavor class', native.cardMarked);
     expect('copy: ITEM classed for item-level Copy', native.itemMarked);
     expect('copy: GROUP classed for analysis-level Copy (the level Torry used)',
