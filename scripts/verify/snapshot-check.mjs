@@ -285,7 +285,22 @@ const nativeState = () => {
     }));
     expect('chrome-idle: chrome tagged at render', st.chromeTagged > 0);
     expect('chrome-idle: NOT idle while hovered', !st.idle);
-    await page.mouse.move(box.cx, box.below);   // leave the host
+    // Torry's rule (the v2 semantics): pointer away but document still
+    // FOCUSED -> chrome must STAY (the v1 pointer-driven hide read as
+    // broken while the analysis was selected).
+    await page.mouse.move(box.cx, box.below);   // leave the host, focus kept
+    await page.waitForTimeout(900);             // > the 400 ms probe delay
+    st = await page.evaluate(() => ({
+        idle: document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
+    }));
+    expect('chrome-idle: pointer away + still focused -> chrome STAYS', !st.idle);
+    // Real hide trigger: focus leaves the document (jamovi menus, the
+    // spreadsheet). Headless pages always report hasFocus() true, so
+    // the probe uses the documented force hook + the blur event.
+    await page.evaluate(() => {
+        window.__gb2_ciForceBlur = true;
+        window.dispatchEvent(new Event('blur'));
+    });
     await page.waitForFunction(() =>
         document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'),
         null, { timeout: 5000 });
@@ -297,13 +312,14 @@ const nativeState = () => {
             chartShown: !!(chart && chart.getClientRects().length > 0),
         };
     });
-    expect('chrome-idle: idle hides every chrome element', st.allHidden);
+    expect('chrome-idle: blur hides every chrome element', st.allHidden);
     expect('chrome-idle: the chart itself stays visible', st.chartShown);
-    await page.mouse.move(box.cx, box.cy);      // hover back
-    await page.waitForTimeout(200);
-    const back = await page.evaluate(() =>
-        !document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle'));
-    expect('chrome-idle: chrome returns instantly on hover', back);
+    const back = await page.evaluate(() => {
+        window.__gb2_ciForceBlur = false;
+        window.dispatchEvent(new Event('focus'));
+        return !document.querySelector('.graphbuilder2-host').classList.contains('gb2-chrome-idle');
+    });
+    expect('chrome-idle: chrome returns instantly on refocus', back);
     const skip = await page.evaluate(() => {
         const b = document.querySelector('button[data-role=gb2-skip-chart]');
         return b ? { text: (b.textContent || '').trim(), aria: b.getAttribute('aria-label') || '' } : null;
