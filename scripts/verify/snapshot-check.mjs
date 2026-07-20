@@ -348,10 +348,12 @@ const nativeState = () => {
         document.querySelectorAll('svg [data-bar-cat]').length > 0,
         null, { timeout: 30000 });
     const wired = await page.evaluate(() => {
-        // wrap the live host in a results-element, as jamovi does
+        // wrap the live host in group > item elements, as jamovi does
         const host = document.querySelector('.graphbuilder2-host');
+        const grp = document.createElement('jmv-results-group');
         const el = document.createElement('jmv-results-html');
-        host.parentNode.insertBefore(el, host);
+        host.parentNode.insertBefore(grp, host);
+        grp.appendChild(el);
         el.appendChild(host);
         return {
             patched: !!window.__gb2_copyPatched,
@@ -385,12 +387,17 @@ const nativeState = () => {
         return {
             allOptedOut: chrome.length > 0 && chrome.every(el => el.classList.contains('ignore-html')),
             cardMarked: !!(card && card !== svgEl && card.classList.contains('jmv-results-image-image')),
+            itemMarked: !!document.querySelector('jmv-results-html.jmv-results-image'),
+            groupMarked: !!document.querySelector('jmv-results-group.jmv-results-image'),
             chartClean: !svgEl.classList.contains('ignore-html'),
         };
     });
     expect('copy: every chrome element carries jamovi\'s ignore-html opt-out',
            native.allOptedOut);
     expect('copy: chart card wears the image-flavor class', native.cardMarked);
+    expect('copy: ITEM classed for item-level Copy', native.itemMarked);
+    expect('copy: GROUP classed for analysis-level Copy (the level Torry used)',
+           native.groupMarked);
     expect('copy: the chart itself is NOT opted out', native.chartClean);
     await page.evaluate(() => {
         document.querySelector('jmv-results-html').copyContentToClipboard();
