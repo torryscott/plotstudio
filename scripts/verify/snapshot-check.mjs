@@ -329,6 +329,75 @@ const nativeState = () => {
     await ctx.close();
 }
 
+// ---- 9. right-click Copy puts a REAL PNG on the clipboard (Office
+//      drops inline <svg> from pasted HTML, so jamovi's stock copy of a
+//      live widget pasted as text runs - Torry's PowerPoint test). The
+//      bundle wraps copyContentToClipboard on the results-element class;
+//      stub the class (the undo-check pattern) and drive a copy.
+{
+    const STUB = `customElements.define('jmv-results-html', class extends HTMLElement {
+        render() {}
+        copyContentToClipboard() { window.__origCopyCalled = true; }
+    });`;
+    const ctx = await browser.newContext();
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const page = await ctx.newPage();
+    await page.addInitScript(STUB);
+    await page.goto('file://' + path.join(OUT, 'snap-inline.html'));
+    await page.waitForFunction(() =>
+        document.querySelectorAll('svg [data-bar-cat]').length > 0,
+        null, { timeout: 30000 });
+    const wired = await page.evaluate(() => {
+        // wrap the live host in a results-element, as jamovi does
+        const host = document.querySelector('.graphbuilder2-host');
+        const el = document.createElement('jmv-results-html');
+        host.parentNode.insertBefore(el, host);
+        el.appendChild(host);
+        return {
+            patched: !!window.__gb2_copyPatched,
+            serializer: typeof host.__gb2_serializeSvg === 'function',
+        };
+    });
+    expect('copy: patch installed + serializer exposed',
+           wired.patched && wired.serializer);
+    await page.evaluate(() => {
+        document.querySelector('jmv-results-html').copyContentToClipboard();
+    });
+    await page.waitForFunction(() => window.__gb2_lastCopyPath === 'png',
+        null, { timeout: 15000 });
+    expect('copy: PNG path taken (no fallback)', true);
+    const clip = await page.evaluate(async () => {
+        try {
+            const items = await navigator.clipboard.read();
+            const types = [];
+            for (const it of items) types.push(...it.types);
+            let pngBytes = 0, htmlHasImg = false;
+            for (const it of items) {
+                if (it.types.includes('image/png')) {
+                    pngBytes = (await it.getType('image/png')).size;
+                }
+                if (it.types.includes('text/html')) {
+                    const t = await (await it.getType('text/html')).text();
+                    htmlHasImg = t.includes('<img') && t.includes('data:image/png');
+                }
+            }
+            return { types, pngBytes, htmlHasImg };
+        } catch (e) { return { err: String(e) }; }
+    });
+    expect('copy: clipboard carries a pasteable image ' +
+           JSON.stringify(clip.types || clip.err),
+           !clip.err && (clip.pngBytes > 5000 || clip.htmlHasImg));
+    // negative control: an item WITHOUT our widget falls through
+    const orig = await page.evaluate(() => {
+        const other = document.createElement('jmv-results-html');
+        document.body.appendChild(other);
+        other.copyContentToClipboard();
+        return !!window.__origCopyCalled;
+    });
+    expect('copy: non-widget items use the original path', orig);
+    await ctx.close();
+}
+
 await browser.close();
 console.log(fails === 0 ? 'snapshot-check: ALL OK' : `snapshot-check: ${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
