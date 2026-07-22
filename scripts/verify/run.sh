@@ -141,6 +141,18 @@ else
     fi
 fi
 
+echo "== fresh-analysis delivery stability (Group By -> first snapshot -> native Image)"
+if GB2_SNAPCHURN_OUT="$OUT-snapchurn" GB2_BUNDLE="$BUNDLE" Rscript "$HERE/snapchurn-render.R"; then
+    GB2_SNAPCHURN_OUT="$OUT-snapchurn" node "$HERE/snapchurn-check.mjs"
+else
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "   skipped: jmvcore not available"
+    else
+        exit "$rc"
+    fi
+fi
+
 if [ "$EXTRAS" = "1" ]; then
     echo "== extras: accessibility audit (axe-core, WCAG A/AA)"
     # The wizard is not a battery page (helpmechoose has no chart);

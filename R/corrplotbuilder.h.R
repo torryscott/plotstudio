@@ -156,6 +156,8 @@ corrplotbuilderResults <- if (requireNamespace("jmvcore", quietly=TRUE)) R6::R6C
                 width=700,
                 height=450,
                 renderFun=".renderSnapshot",
+                clearWith=list(
+                    "chartSnapshot"),
                 visible=FALSE))
             self$add(jmvcore::Html$new(
                 options=options,

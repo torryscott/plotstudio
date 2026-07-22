@@ -307,11 +307,14 @@ const nativeState = () => {
     await ctx.close();
 }
 
-// ---- 9. right-click Copy puts a REAL PNG on the clipboard (Office
-//      drops inline <svg> from pasted HTML, so jamovi's stock copy of a
-//      live widget pasted as text runs - Torry's PowerPoint test). The
-//      bundle wraps copyContentToClipboard on the results-element class;
-//      stub the class (the undo-check pattern) and drive a copy.
+// ---- 9. focused-item KEYBOARD Copy (Cmd/Ctrl+C) puts a REAL PNG on
+//      the clipboard. This is deliberately NOT called a right-click
+//      test: jamovi's context-menu Copy travels through main-window
+//      getcontent instead of calling copyContentToClipboard() here.
+//      Office drops inline <svg> from pasted HTML, so the keyboard path
+//      wraps copyContentToClipboard on the results-element class and
+//      selects an offscreen PNG <img>. Stub that class and drive the
+//      focused-item method directly.
 {
     const STUB = `customElements.define('jmv-results-html', class extends HTMLElement {
         render() {}
@@ -338,11 +341,13 @@ const nativeState = () => {
             serializer: typeof host.__gb2_serializeSvg === 'function',
         };
     });
-    expect('copy: patch installed + serializer exposed',
+    expect('keyboard-copy: patch installed + serializer exposed',
            wired.patched && wired.serializer);
-    // jamovi-native flavor route: chrome opted out via jamovi's OWN
+    // Independently guard the classes used by jamovi's context-menu
+    // getcontent route: chrome is opted out via jamovi's OWN
     // .ignore-html mechanism, and the item wears the image classes so
-    // getcontent picks the image/png flavor for right-click Copy.
+    // getcontent can pick the image/png flavor. This structural check
+    // does not turn the direct method call below into a right-click test.
     // The impersonation needs the results-element ANCESTOR at render
     // time; the reparent above happened after render, so re-render.
     await page.evaluate(() => {
@@ -375,21 +380,21 @@ const nativeState = () => {
             chartClean: !svgEl.classList.contains('ignore-html'),
         };
     });
-    expect('copy: every chrome element carries jamovi\'s ignore-html opt-out',
+    expect('copy-structure: every chrome element carries jamovi\'s ignore-html opt-out',
            native.allOptedOut);
-    expect('copy: chart svg carries explicit xmlns (the rasterizer root cause)',
+    expect('copy-structure: chart svg carries explicit xmlns (the rasterizer root cause)',
            native.chartHasNs);
-    expect('copy: chart card wears the image-flavor class', native.cardMarked);
-    expect('copy: ITEM classed for item-level Copy', native.itemMarked);
-    expect('copy: GROUP classed for analysis-level Copy (the level Torry used)',
+    expect('copy-structure: chart card wears the image-flavor class', native.cardMarked);
+    expect('copy-structure: ITEM classed for item-level Copy', native.itemMarked);
+    expect('copy-structure: GROUP classed for analysis-level Copy (the level Torry used)',
            native.groupMarked);
-    expect('copy: the chart itself is NOT opted out', native.chartClean);
+    expect('copy-structure: the chart itself is NOT opted out', native.chartClean);
     await page.evaluate(() => {
         document.querySelector('jmv-results-html').copyContentToClipboard();
     });
     await page.waitForFunction(() => window.__gb2_lastCopyPath === 'png',
         null, { timeout: 15000 });
-    expect('copy: PNG path taken (no fallback)', true);
+    expect('keyboard-copy: PNG path taken (no fallback)', true);
     const clip = await page.evaluate(async () => {
         try {
             const items = await navigator.clipboard.read();
@@ -408,7 +413,7 @@ const nativeState = () => {
             return { types, pngBytes, htmlHasImg };
         } catch (e) { return { err: String(e) }; }
     });
-    expect('copy: clipboard carries a pasteable image ' +
+    expect('keyboard-copy: clipboard carries a pasteable image ' +
            JSON.stringify(clip.types || clip.err),
            !clip.err && (clip.pngBytes > 5000 || clip.htmlHasImg));
     // negative control: an item WITHOUT our widget falls through
@@ -418,7 +423,7 @@ const nativeState = () => {
         other.copyContentToClipboard();
         return !!window.__origCopyCalled;
     });
-    expect('copy: non-widget items use the original path', orig);
+    expect('keyboard-copy: non-widget items use the original path', orig);
     await ctx.close();
 }
 
@@ -556,9 +561,45 @@ window.__gb2_snapDelay = 300;`;
     expect('swap: div carries a real png background ' + divState.w + 'x' + divState.h,
            divState.bgIsPng && divState.w > 100 && divState.h > 100);
 
+    // Minimal copy of the two formatio branches that matter here:
+    // `.ignore-html` nodes are excluded, a visible background-image
+    // DIV becomes an <img>, and an exposed SVG is emitted verbatim.
+    // Restrict the walk to the widget host + its PNG sibling so script
+    // text elsewhere in the generated fixture cannot create a false
+    // `<svg` match. Office prefers this HTML flavor over image/png.
+    await page.evaluate(() => {
+        window.__gb2_testOfficeHtmlState = () => {
+            const host = document.querySelector('.graphbuilder2-host');
+            const dv = document.querySelector('[data-role="gb2-copy-div"]');
+            const htmlify = (el) => {
+                if (!el || getComputedStyle(el).display === 'none' ||
+                        el.classList.contains('ignore-html')) return '';
+                const tag = el.tagName.toLowerCase();
+                if (tag === 'div') {
+                    const cs = getComputedStyle(el);
+                    if (cs.backgroundImage !== 'none') {
+                        const m = /(?:\(['"]?)(.*?)(?:['"]?\))/.exec(cs.backgroundImage);
+                        if (m) return `<img src="${m[1]}" style="width: ${cs.width}; height: ${cs.height};">`;
+                    }
+                }
+                if (tag === 'svg') return el.outerHTML;
+                let html = '';
+                for (const child of el.children) html += htmlify(child);
+                return html;
+            };
+            const html = htmlify(host) + htmlify(dv);
+            return {
+                htmlHasPngImg: /<img\s[^>]*src="data:image\/png/.test(html),
+                htmlHasInlineSvg: /<svg(?:\s|>)/i.test(html),
+                htmlLength: html.length,
+            };
+        };
+    });
+
     // Local synthetic dispatch runs the listener SYNCHRONOUSLY - the
     // swap state is assertable the moment dispatchEvent returns (the
-    // real serializer walk starts in a microtask after this).
+    // real serializer walk starts in a microtask after this). Empty
+    // address is jamovi's analysis-level Copy.
     const swapped = await page.evaluate(() => {
         window.__gb2_swapMs = 150;
         window.dispatchEvent(new MessageEvent('message', {
@@ -572,11 +613,15 @@ window.__gb2_snapDelay = 300;`;
             hostOptedOut: host.classList.contains('ignore-html'),
             divShown: dv.style.display === 'block',
             opacity: getComputedStyle(dv).opacity,
+            office: window.__gb2_testOfficeHtmlState(),
         };
     });
-    expect('swap: host opted out during the copy window', swapped.hostOptedOut);
-    expect('swap: png div included during the copy window', swapped.divShown);
-    expect('swap: shown div still invisible on screen (opacity 0)', swapped.opacity === '0');
+    expect('swap: analysis-level host opted out during the copy window', swapped.hostOptedOut);
+    expect('swap: analysis-level png div included during the copy window', swapped.divShown);
+    expect('swap: analysis-level shown div still invisible on screen (opacity 0)', swapped.opacity === '0');
+    expect('swap: analysis-level Office HTML is PNG <img>, never inline SVG (' +
+           swapped.office.htmlLength + ' chars)',
+           swapped.office.htmlHasPngImg && !swapped.office.htmlHasInlineSvg);
 
     await page.waitForFunction(() => {
         const host = document.querySelector('.graphbuilder2-host');
@@ -618,11 +663,41 @@ window.__gb2_snapDelay = 300;`;
     expect('swap: rebuild stage logged',
            stagesHeal.includes('copy div rebuilt from cache'));
 
-    // Item-level copy (non-empty address, e.g. the static Image result
-    // or our widget item) must make NO DOM changes: hiding the static
-    // copy mid-copy blanked jamovi's own rasterization of it (Torry's
-    // "image level pastes nothing").
-    const itemLevel = await page.evaluate(() => {
+    // Widget-level context-menu Copy has address ['widget']. It needs
+    // the SAME HTML-safe stand-in as analysis-level Copy: although
+    // jamovi also produces image/png for the impersonated Html item,
+    // Office prefers text/html, where a live inline SVG becomes text
+    // soup. This is the route the old synthetic tests did not cover.
+    const widgetLevel = await page.evaluate(() => {
+        window.__gb2_swapMs = 150;
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'getcontent', data: { address: ['widget'],
+                options: { exclude: ['.jmvrefs'], images: 'absolute', docType: true } } },
+            source: null,
+        }));
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return {
+            hostOptedOut: host.classList.contains('ignore-html'),
+            divShown: dv.style.display === 'block',
+            office: window.__gb2_testOfficeHtmlState(),
+        };
+    });
+    expect('swap: widget-level Copy opts out host + includes png div',
+           widgetLevel.hostOptedOut && widgetLevel.divShown);
+    expect('swap: widget-level Office HTML is PNG <img>, never inline SVG (' +
+           widgetLevel.office.htmlLength + ' chars)',
+           widgetLevel.office.htmlHasPngImg && !widgetLevel.office.htmlHasInlineSvg);
+    await page.waitForFunction(() => {
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return !host.classList.contains('ignore-html') && dv.style.display === 'none';
+    }, null, { timeout: 5000 });
+
+    // Native Image-level Copy must make NO DOM changes. Hiding the
+    // static copy mid-copy blanks jamovi's own rasterization of it
+    // (Torry's prior "image level pastes nothing" regression).
+    const nativeItemLevel = await page.evaluate(() => {
         window.dispatchEvent(new MessageEvent('message', {
             data: { type: 'getcontent', data: { address: ['snapshotImage'],
                 options: { exclude: ['.jmvrefs'], images: 'absolute', docType: true } } },
@@ -635,11 +710,30 @@ window.__gb2_snapDelay = 300;`;
             divShown: dv.style.display === 'block',
         };
     });
-    expect('swap: item-level copy makes NO DOM changes',
-           !itemLevel.hostOptedOut && !itemLevel.divShown);
+    expect('swap: native snapshotImage Copy makes NO DOM changes',
+           !nativeItemLevel.hostOptedOut && !nativeItemLevel.divShown);
     const stagesItem = await page.evaluate(() => (window.__gb2_copyStages || []).join('\n'));
-    expect('swap: item-level no-swap stage logged',
-           stagesItem.includes('item-level copy - no swap'));
+    expect('swap: native item-level no-swap stage logged',
+           stagesItem.includes('native/other item copy - no swap ["snapshotImage"]'));
+
+    // A different Html item is not the chart widget and must likewise
+    // remain untouched. The production gate is the exact item name,
+    // not merely "any non-empty address".
+    const otherItemLevel = await page.evaluate(() => {
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { type: 'getcontent', data: { address: ['exportStatus'],
+                options: { exclude: ['.jmvrefs'], images: 'absolute', docType: true } } },
+            source: null,
+        }));
+        const host = document.querySelector('.graphbuilder2-host');
+        const dv = document.querySelector('[data-role="gb2-copy-div"]');
+        return {
+            hostOptedOut: host.classList.contains('ignore-html'),
+            divShown: dv.style.display === 'block',
+        };
+    });
+    expect('swap: unrelated exportStatus item Copy makes NO DOM changes',
+           !otherItemLevel.hostOptedOut && !otherItemLevel.divShown);
 
     // Negative: same request WITHOUT docType (a per-item export) must
     // not swap - exports keep the vector svg.

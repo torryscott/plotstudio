@@ -23,6 +23,8 @@ items:
       width: 700
       height: 450
       renderFun: .renderSnapshot
+      clearWith:
+        - chartSnapshot
       visible: false
 
     # The numbers behind the chart: one row per plotted cell (group x

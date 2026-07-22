@@ -226,6 +226,25 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
         # data-shaping options), identical()-compared so style-only
         # commits skip the per-cell aggregation. See .run().
         .aggCache = NULL,
+        # SCRIPT-SRC PROTOTYPE (GB2_SCRIPT_SRC=1, Jul 2026, pilot module):
+        # serve the bundle from the module directory via the Html result's
+        # scripts field instead of inlining it in the results content.
+        # Set in .init() per Jonathon's guidance (Jul 2026 thread): the
+        # INIT delivery already carries the scripts field, so the
+        # resultsview element loads the JS while R computes and the
+        # .run() payload arrives with the engine loaded and waiting.
+        # Path is package-relative (module_asset joins
+        # module_path/R/<ns>/<path>); the raw $scripts binding is used on
+        # purpose - jmvcore's setScripts() helper prefixes the package
+        # name, which double-prefixes under the current route (fixed
+        # upstream Jul 2026, but not in 2.7.x-in-the-wild). tryCatch:
+        # harness jmvcore versions without the binding.
+        .init = function() {
+            if (gb2_script_src_on())
+                tryCatch(self$results$widget$scripts <- "widget/graphbuilder2.min.js",
+                         error = function(e) NULL)
+        },
+
         .run = function() {
             # Wall-clock at run entry: feeds the debug overlay's "R
             # prelude" line + run-entry->paint gap (speed pass Phase 0).
@@ -253,8 +272,12 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
                 # native static copy alongside the message.
                 tryCatch(self$results$snapshotImage$setVisible(FALSE),
                          error = function(e) NULL)
-                self$results$widget$setContent(gb2_engine_boot_html(
-                    private$.placeholder(), self$options$clientBundleHash))
+                # script-src mode needs no engine-boot ship - the bundle
+                # rides the scripts field, so the placeholder is plain.
+                self$results$widget$setContent(
+                    if (gb2_script_src_on()) private$.placeholder()
+                    else gb2_engine_boot_html(
+                        private$.placeholder(), self$options$clientBundleHash))
                 return()
             }
 
@@ -461,6 +484,7 @@ plotbuilderClass <- if (requireNamespace('jmvcore', quietly = TRUE)) R6::R6Class
                 # Static-snapshot fallback: raw pass-through of the JS-committed
                 # "<sig>|<svg>"; widget.R sanitizes + embeds (never in the payload).
                 chart_snapshot = self$options$chartSnapshot,
+                script_src_ready = TRUE,
                 bars = bars,
                 # Ship the stat options so the client-side panel preview can
                 # diff + recompute cells optimistically (graphbuilder2.js

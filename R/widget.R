@@ -15,7 +15,20 @@
 #' @param bars A list of named lists describing each bar.
 #' @return Character scalar of HTML.
 #' @keywords internal
+
+# Script-src prototype switch. The env var works for harnesses/probes; REAL
+# jamovi strips inherited env at the Electron->server spawn (measured
+# Jul 22 2026: flag present in the Electron process, absent in python +
+# engine), so live jamovi is toggled by a flag FILE instead:
+#   touch ~/.plotstudio-scriptsrc     # enable
+#   rm ~/.plotstudio-scriptsrc       # disable
+gb2_script_src_on <- function() {
+    nzchar(Sys.getenv("GB2_SCRIPT_SRC")) ||
+        file.exists(path.expand("~/.plotstudio-scriptsrc"))
+}
+
 graphbuilder2_html <- function(bars,
+                               script_src_ready = FALSE,
                                # Native-panel preview keys (Compare Groups /
                                # Repeated Measures forward these; NULL = the
                                # module doesn't, and the payload omits them so
@@ -2064,12 +2077,27 @@ graphbuilder2_html <- function(bars,
     if (nzchar(Sys.getenv("GB2_NO_BUNDLE_CACHE")))
         client_bundle_hash <- ""
     js_hash <- .gb2_widget_js_hash()
-    bundle_mode <- if (nzchar(js_hash) &&
-                       identical(as.character(client_bundle_hash), js_hash))
+    # SCRIPT-SRC PROTOTYPE (GB2_SCRIPT_SRC=1, Jul 2026): the bundle is
+    # NOT shipped in the results content at all - the module's .b.R sets
+    # the Html result's `scripts` field to 'widget/graphbuilder2.min.js'
+    # and jamovi's resultsview loads it via <script src="module/...">
+    # (the module_asset route, paths relative to R/plotstudio/). The
+    # resultsview gates content insertion on the script's load promise,
+    # so the engine should already be defined when the inline payload
+    # script runs; engine-absent is the lifecycle diagnostic this
+    # prototype exists to surface. Jonathon-agreed direction (Jul 2026
+    # thread); env-gated so shipped behavior is byte-identical.
+    # script_src_ready: per-module opt-in - only modules whose .init()
+    # actually sets widget$scripts may take this branch (the audit's catch:
+    # under the env flag alone, the other six modules would emit NO engine).
+    bundle_mode <- if (gb2_script_src_on() && isTRUE(script_src_ready)) "scriptsrc"
+        else if (nzchar(js_hash) &&
+                 identical(as.character(client_bundle_hash), js_hash))
         "cached" else "inline"
     # WHY inline - surfaced on the debug overlay's Bundle line so a
     # machine stuck in inline mode is diagnosable at one glance.
-    bundle_reason <- if (bundle_mode == "cached") ""
+    bundle_reason <- if (bundle_mode == "scriptsrc") "script-src prototype (flag file or env)"
+        else if (bundle_mode == "cached") ""
         else if (nzchar(Sys.getenv("GB2_NO_BUNDLE_CACHE"))) "GB2_NO_BUNDLE_CACHE env"
         else if (!nzchar(js_hash)) "no bundle hash (md5 failed)"
         else if (!nzchar(as.character(client_bundle_hash))) "no client hash yet"
@@ -2081,6 +2109,38 @@ graphbuilder2_html <- function(bars,
         # never drift - see their definitions near .gb2_widget_js().
         engine_chunk <- .gb2_engine_chunk_inline(js_hash, js_code)
         store_chunk  <- .gb2_store_chunk(js_hash)
+    } else if (bundle_mode == "scriptsrc") {
+        # The bundle arrived (or should have) via the scripts field's
+        # <script src>. NO hash gate on the engine check: the script tag
+        # always serves the currently installed file, so presence of
+        # render() is the whole test (__hash is stamped for coherence
+        # with code paths that read it). Engine absent = the content
+        # script ran before the bundle loaded (the lifecycle question):
+        # record it on window.__gb2_scriptSrcLate, paint a distinctive
+        # note, and poll-retry so a late-arriving engine still draws -
+        # the retry delay lands in window.__gb2_scriptSrcLateMs so the
+        # prototype run MEASURES the gap instead of hiding it.
+        engine_chunk <- paste0(
+            'var __gb2_engineOk = false;\n',
+            'try {\n',
+            '  __gb2_engineOk = !!(window.GraphBuilder2 && window.GraphBuilder2.render);\n',
+            '  if (__gb2_engineOk) { try { window.GraphBuilder2.__hash = "', js_hash, '"; } catch (_eSt) {} }\n',
+            '  else {\n',
+            '    try { window.__gb2_scriptSrcLate = (window.__gb2_scriptSrcLate || 0) + 1; } catch (_eL) {}\n',
+            '    var __gb2_ssHost = document.getElementById(__gb2_id);\n',
+            "    if (__gb2_ssHost) __gb2_ssHost.innerHTML = '<div data-role=\"gb2-scriptsrc-wait\" style=\"padding:24px 12px;color:#666;font:13px var(--gb2-ui-font);text-align:center;\">script-src prototype: engine not present at content-script time; waiting for the module script…</div>';\n",
+            '    (function __gb2_ssPoll(n) {\n',
+            '      if (window.GraphBuilder2 && window.GraphBuilder2.render) {\n',
+            '        try { window.GraphBuilder2.__hash = "', js_hash, '"; } catch (_eS2) {}\n',
+            '        try { window.__gb2_scriptSrcLateMs = n * 150; } catch (_eL2) {}\n',
+            '        try { window.__gb2_authoritativeRender = true; } catch (_eA) {}\n',
+            '        try { window.GraphBuilder2.render(__gb2_id, __gb2_payload); } catch (_eR) {}\n',
+            '      } else if (n < 60) setTimeout(function () { __gb2_ssPoll(n + 1); }, 150);\n',
+            '    })(0);\n',
+            '  }\n',
+            '} catch (_eC) {}\n'
+        )
+        store_chunk <- ''
     } else {
         engine_chunk <- paste0(
             'var __gb2_engineOk = false;\n',
@@ -2239,7 +2299,14 @@ graphbuilder2_html <- function(bars,
         # Static-snapshot fallback ("" when no snapshot committed yet).
         # Hidden; the cached-branch module-missing timer and the diag
         # primer reveal it when no engine ever answers.
+        # GB2-SNAP markers: the delivery wrapper splits content on these to
+        # detect snapshot-only deliveries (the static-copy echo differs from
+        # the applied content ONLY inside this block) and patches the block
+        # in place instead of wiping + rebuilding the whole chart - the
+        # second visible "roll" of every edit (Torry, Jul 2026).
+        '<!--GB2-SNAP-START-->',
         .gb2_snapshot_fallback_html(widget_id, snap_svg),
+        '<!--GB2-SNAP-END-->',
         # Layer A.5: standalone ES5 primer - runs even when the main
         # script below dies on a parse error (separate script tags
         # parse independently) and upgrades the Layer A box.
@@ -2306,7 +2373,6 @@ graphbuilder2_html <- function(bars,
         '    var txt = t ? (t.textContent || "").replace(/^\\s+|\\s+$/g, "") : "";\n',
         '    if (txt === "Chart (static copy)") nat.push(els[i]);\n',
         '  }\n',
-        '  if (!nat.length) return;\n',
         '  var live = !!(typeof window !== "undefined" && window.GraphBuilder2 && window.GraphBuilder2.render);\n',
         # Diagnostics mode (the timing-overlay flag) leaves the native
         # Image result VISIBLE next to the live chart - the decisive
@@ -2314,7 +2380,50 @@ graphbuilder2_html <- function(bars,
         # jamovi's real Image-level menu and its supported copy path.
         '  var diag = false;\n',
         '  try { diag = !!(window.localStorage && window.localStorage.getItem("gb2_debug_timing") === "1"); } catch (_eDgF) {}\n',
-        '  for (var j = 0; j < nat.length; j++) nat[j].style.display = (live && !diag) ? "none" : "";\n',
+        '  var hide = live && !diag;\n',
+        # Persistent CSS is installed on the FIRST widget render, before the
+        # native Image exists. When the first snapshot later makes jamovi add
+        # Image + BR + annotation, all three are therefore out of layout on
+        # their first style calculation (no one-frame 450px flash and no
+        # surviving whitespace siblings). The data-name is jamovi's UTF-8
+        # base64 encoding of "snapshotImage".
+        '  var hs = document.getElementById("gb2-native-snapshot-hide-style");\n',
+        '  if (!hs) {\n',
+        '    hs = document.createElement("style");\n',
+        '    hs.id = "gb2-native-snapshot-hide-style";\n',
+        '    hs.textContent = "jmv-results-image[data-name=\\"c25hcHNob3RJbWFnZQ==\\"]," +\n',
+        '      "jmv-results-image[data-name=\\"c25hcHNob3RJbWFnZQ==\\"] + br," +\n',
+        '      "jmv-results-image[data-name=\\"c25hcHNob3RJbWFnZQ==\\"] + br + jmv-annotation" +\n',
+        '      "{display:none !important;}";\n',
+        '    (document.head || document.documentElement).appendChild(hs);\n',
+        '  }\n',
+        '  hs.disabled = !hide;\n',
+        '  var setHidden = function (el, yes, companion) {\n',
+        '    if (!el || !el.style) return;\n',
+        '    if (yes) {\n',
+        '      if (!el.getAttribute("data-gb2-snapshot-hidden")) {\n',
+        '        try { el.__gb2SnapshotDisplay = el.style.display || ""; } catch (_eSd) {}\n',
+        '        el.setAttribute("data-gb2-snapshot-hidden", companion ? "companion" : "image");\n',
+        '      }\n',
+        '      el.style.display = "none";\n',
+        '    } else if (el.getAttribute("data-gb2-snapshot-hidden")) {\n',
+        '      el.style.display = (typeof el.__gb2SnapshotDisplay === "string") ? el.__gb2SnapshotDisplay : "";\n',
+        '      el.removeAttribute("data-gb2-snapshot-hidden");\n',
+        '      try { delete el.__gb2SnapshotDisplay; } catch (_eDd) {}\n',
+        '    } else if (!companion) {\n',
+        '      el.style.display = "";\n',
+        '    }\n',
+        '  };\n',
+        '  for (var j = 0; j < nat.length; j++) {\n',
+        '    setHidden(nat[j], hide, false);\n',
+        '    var br = nat[j].nextElementSibling;\n',
+        '    if (br && String(br.tagName).toUpperCase() === "BR") {\n',
+        '      setHidden(br, hide, true);\n',
+        '      var ann = br.nextElementSibling;\n',
+        '      if (ann && String(ann.tagName).toUpperCase() === "JMV-ANNOTATION") setHidden(ann, hide, true);\n',
+        '    }\n',
+        '  }\n',
+        '  if (!nat.length) return;\n',
         '  if (!live) {\n',
         '    var __nsSn = document.getElementById(__gb2_id + "-snap");\n',
         '    if (__nsSn) { var __nsSi = __nsSn.querySelector("img"); if (__nsSi) __nsSi.style.display = "none"; }\n',
@@ -2323,6 +2432,67 @@ graphbuilder2_html <- function(bars,
         # Exposed so the Diagnostics checkbox can flip the static copy
         # in and out immediately (no wait for the next delivery).
         'try { window.__gb2_snapNativeSync = __gb2_snapNativeSync; } catch (_eNsX) {}\n',
+        # Hide the native static copy the INSTANT it (re)mounts: the timer
+        # sweep (0/400/1500ms) left a window where the ~400px Image result
+        # rendered visible then vanished on every delivery - the shrink
+        # clamps the results scroller and yanks a scrolled-away user back
+        # to the chart (Torry's Frequencies yank, root cause, Jul 2026).
+        # childList-only observation: the sync writes style.display, which
+        # an attribute observer would loop on. Registered once per window.
+        # Scroll-gate, FINAL form (Jul 2026, round 4 - zero DOM footprint):
+        # resultsview decides scrollIntoView with ONE check - line ~207,
+        # document.querySelectorAll('.jmv-annotation.focused').length > 0.
+        # Every element-based gate FAILED: in-content divs get CULLED by
+        # jamovi's annotation manager, and a body-level div made the
+        # annotation SYSTEM believe a note was focused (expanded strips,
+        # a phantom focused editor below the chart - Torry's screenshot).
+        # So patch the QUERY, not the DOM: shadow document.querySelectorAll
+        # in this iframe's realm; for that EXACT selector, return a length-1
+        # stand-in when the real result is empty (real focused annotations
+        # pass through untouched; every other selector delegates). The
+        # caller only reads .length. No element exists, so the annotation
+        # UI stays fully native.
+        'try { if (!window.__gb2_qsaPatched) { window.__gb2_qsaPatched = true;\n',
+        '  var __gb2_sgOld = document.getElementById("gb2-scroll-gate");\n',
+        '  if (__gb2_sgOld && __gb2_sgOld.parentNode) __gb2_sgOld.parentNode.removeChild(__gb2_sgOld);\n',
+        '  var __gb2_origQSA = document.querySelectorAll.bind(document);\n',
+        '  document.querySelectorAll = function (sel) {\n',
+        '    if (sel === ".jmv-annotation.focused") {\n',
+        '      var __gb2_qr = __gb2_origQSA(sel);\n',
+        '      if (__gb2_qr.length === 0) return [{ gb2ScrollGate: true }];\n',
+        '      return __gb2_qr;\n',
+        '    }\n',
+        '    return __gb2_origQSA(sel);\n',
+        '  };\n',
+        '} } catch (_eQp) {}\n',
+        # Focus-scroll kill (Jul 2026, the yank's PROVEN driver - the blur
+        # discriminator: nothing focused in the frame at delivery = drift 0,
+        # chart focused = 1058px instant parent scroll): ANY focus() call
+        # inside this frame that lands on an off-viewport element makes the
+        # PARENT window scroll the analysis into view - including jamovi's
+        # own post-swap refocus of the results group, which runs from THEIR
+        # pipeline where no wrapper of ours can blur first. So shadow the
+        # focus methods for the whole frame and merge preventScroll:true
+        # into every call (callers passing preventScroll:false explicitly
+        # are respected). Trade-off accepted: keyboard Tab focus no longer
+        # auto-scrolls the parent either.
+        'try { if (!window.__gb2_focusPatched) { window.__gb2_focusPatched = true;\n',
+        '  var __gb2_fixFocus = function (proto) {\n',
+        '    if (!proto || !proto.focus) return;\n',
+        '    var __gb2_of = proto.focus;\n',
+        '    proto.focus = function (opts) {\n',
+        '      var o = opts || {};\n',
+        '      if (o.preventScroll !== false) o = Object.assign({}, o, { preventScroll: true });\n',
+        '      return __gb2_of.call(this, o);\n',
+        '    };\n',
+        '  };\n',
+        '  __gb2_fixFocus(window.HTMLElement && window.HTMLElement.prototype);\n',
+        '  __gb2_fixFocus(window.SVGElement && window.SVGElement.prototype);\n',
+        '} } catch (_eFp) {}\n',
+        'try { if (!window.__gb2_snapObserver && typeof MutationObserver !== "undefined") {\n',
+        '  window.__gb2_snapObserver = new MutationObserver(function () { try { window.__gb2_snapNativeSync && window.__gb2_snapNativeSync(); } catch (_eO) {} });\n',
+        '  window.__gb2_snapObserver.observe(document.body, { childList: true, subtree: true });\n',
+        '} } catch (_eObs) {}\n',
         'try { __gb2_snapNativeSync(); setTimeout(__gb2_snapNativeSync, 400); setTimeout(__gb2_snapNativeSync, 1500); } catch (_eNsA) {}\n',
         'var __gb2_renderErr = null, __gb2_renderExc = null;\n',
         'try {\n',
