@@ -119,6 +119,52 @@ const snapState = () => ({
     expect('module-less: host (loading note) hidden', !st.hostShown);
     expect('module-less: caption explains + points at install',
            st.bodyText.indexOf('made with the Plot Studio module') >= 0);
+    // Refined module-less instructions (Torry's Phase 4 UX log): the
+    // jamovi-only how-to (Copy / Export routes) + the Save-link caveat
+    // are visible here but tagged ignore-html so jamovi's serializer
+    // strips them from every export/copy; clicking the (blocked-in-
+    // jamovi) Save link reveals the feedback note instead of silence.
+    const refined = await page.evaluate(() => {
+        const q = (r) => document.querySelector('[data-role=' + r + ']');
+        const vis = (el) => !!el && getComputedStyle(el).display !== 'none';
+        const helpEl = q('gb2-snap-jamovi-help');
+        const cavEl = q('gb2-snap-save-caveat');
+        const noteEl = q('gb2-snap-save-note');
+        return {
+            helpShown: vis(helpEl),
+            helpText: helpEl ? (helpEl.textContent || '') : '',
+            cavShown: vis(cavEl),
+            cavText: cavEl ? (cavEl.textContent || '') : '',
+            noteHidden: !!noteEl && getComputedStyle(noteEl).display === 'none',
+            allIgnored: !!helpEl && helpEl.classList.contains('ignore-html')
+                && !!cavEl && cavEl.classList.contains('ignore-html')
+                && !!noteEl && noteEl.classList.contains('ignore-html'),
+        };
+    });
+    expect('module-less: jamovi how-to visible (Copy + Export routes)',
+           refined.helpShown && refined.helpText.indexOf('Copy') >= 0
+           && refined.helpText.indexOf('Export') >= 0);
+    expect('module-less: Save-link caveat explicit (export as HTML, then browser)',
+           refined.cavShown
+           && refined.cavText.indexOf('export the results as HTML') >= 0
+           && refined.cavText.indexOf('web browser') >= 0
+           && refined.cavText.indexOf('does nothing here inside jamovi') >= 0);
+    expect('module-less: jamovi-only pieces all tagged ignore-html',
+           refined.allIgnored);
+    expect('module-less: click-feedback note hidden before any click',
+           refined.noteHidden);
+    const noteAfter = await page.evaluate(() => {
+        const a = document.querySelector('[data-role=gb2-snap-save]');
+        if (!a) return false;
+        // Block the data-URI download so the headless click stays on-page;
+        // the reveal listener (added first) still fires.
+        a.addEventListener('click', (e) => e.preventDefault(), { once: true });
+        a.click();
+        const n = document.querySelector('[data-role=gb2-snap-save-note]');
+        return !!n && getComputedStyle(n).display !== 'none';
+    });
+    expect('module-less: clicking the Save link reveals the feedback note',
+           noteAfter);
     await ctx.close();
 }
 

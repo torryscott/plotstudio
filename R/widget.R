@@ -2200,6 +2200,11 @@ graphbuilder2_html <- function(bars,
             '          var __mmA = __mmS.querySelector("[data-role=gb2-snap-save]");\n',
             '          var __mmI = __mmS.querySelector("img");\n',
             '          if (__mmA && __mmI && __mmA.getAttribute("href") === "#") __mmA.setAttribute("href", __mmI.getAttribute("src"));\n',
+            # Click feedback: the webview blocks downloads, so the Save
+            # link is a silent no-op here - reveal the explanatory note
+            # instead of dead silence. Listener-only (never serialized),
+            # so exported HTML keeps the plain working download.
+            '          if (__mmA && !__mmA.__gb2NoteWired) { __mmA.__gb2NoteWired = true; __mmA.addEventListener("click", function () { try { var __mmN = __mmS.querySelector("[data-role=gb2-snap-save-note]"); if (__mmN) __mmN.style.display = "block"; } catch (_eNt) {} }); }\n',
             '        } catch (_eSv) {}\n',
             '        __mmH.style.display = "none";\n',
             '      } else {\n',
@@ -2827,14 +2832,42 @@ graphbuilder2_html <- function(bars,
         '<div data-role="gb2-static-fallback-caption" ',
         'style="display:none;margin-top:6px;font-size:11.5px;line-height:1.5;color:#666;">',
         'Static snapshot. This chart was made with the Plot Studio module for ',
-        'jamovi, which is not installed here. Install it ',
-        '(github.com/torryscott/plotstudio, Releases) and reopen this file to ',
-        'view and edit the live chart. ',
+        'jamovi, which is not installed here.',
+        # jamovi-only sentences ride the ignore-html class (jamovi's own
+        # serializer opt-out): visible INSIDE jamovi, skipped by every
+        # export/copy serialization - so the browser reader of an
+        # exported HTML file gets a clean working Save link with no
+        # jamovi menu talk (Torry's Phase 4 module-less UX log).
+        '<span class="ignore-html" data-role="gb2-snap-jamovi-help">',
+        ' You can still use the figure: right-click it and choose Image, ',
+        'then Copy, to paste it into Word or PowerPoint. Or choose ',
+        'Analysis, then Export, to save this page as a PDF or HTML file. ',
+        '(Export under the Image menu needs the module and does nothing ',
+        'here.)</span>',
+        ' To view and edit the live chart, install Plot Studio ',
+        '(github.com/torryscott/plotstudio, Releases) and reopen this file. ',
         '<a data-role="gb2-snap-save" download="chart.svg" href="#" ',
         'style="color:#3573bd;">Save image (SVG)</a>',
-        ' If that link does nothing here, export the results as HTML ',
-        '(jamovi menu, Export) and open it in a browser - the images are ',
-        'embedded there and can be saved normally.',
+        '<span class="ignore-html" data-role="gb2-snap-save-caveat">',
+        '<br>Note: this link does nothing here inside jamovi, because ',
+        'jamovi blocks file downloads. It only works from a web browser, ',
+        'after an HTML export: (1) export the results as HTML using ',
+        'Analysis, then Export; (2) open that HTML file in a web browser; ',
+        '(3) click this Save image link there.</span>',
+        # Click feedback for the link INSIDE jamovi: hidden until the
+        # first click, revealed by a listener the reveal scripts attach.
+        # The exported HTML runs no scripts (and this div is display:none
+        # + ignore-html anyway), so a browser click goes straight to the
+        # download and never sees the note.
+        '<div class="ignore-html" data-role="gb2-snap-save-note" ',
+        'style="display:none;margin-top:5px;padding:6px 9px;background:#fdf6e3;',
+        'border:1px solid #e6d9a8;border-radius:4px;color:#665f38;">',
+        'Nothing downloaded: jamovi blocks file downloads in this view. ',
+        'This link only works from a web browser, after an HTML export: ',
+        '(1) export the results as HTML using Analysis, then Export; ',
+        '(2) open that HTML file in a web browser; (3) click the Save ',
+        'image link there. Or right-click the chart and choose Image, ',
+        'then Copy, to use the figure directly.</div>',
         '</div></div>'
     )
 }
@@ -2867,7 +2900,9 @@ graphbuilder2_html <- function(bars,
         'try{var sn=document.getElementById(id+"-snap");if(sn){sn.style.display="block";\n',
         'var sc=sn.querySelector("[data-role=gb2-static-fallback-caption]");if(sc)sc.style.display="block";\n',
         'var sa=sn.querySelector("[data-role=gb2-snap-save]");var si=sn.querySelector("img");\n',
-        'if(sa&&si&&sa.getAttribute("href")==="#")sa.setAttribute("href",si.getAttribute("src"));}}catch(_eSn){}\n',
+        'if(sa&&si&&sa.getAttribute("href")==="#")sa.setAttribute("href",si.getAttribute("src"));\n',
+        'if(sa&&!sa.__gb2NoteWired){sa.__gb2NoteWired=true;sa.addEventListener("click",function(){try{var nn=sn.querySelector("[data-role=gb2-snap-save-note]");if(nn)nn.style.display="block";}catch(_eNt2){}});}\n',
+        '}}catch(_eSn){}\n',
         '}catch(_e2){}},6000);\n',
         '}catch(_e0){}})();</script>\n'
     )
